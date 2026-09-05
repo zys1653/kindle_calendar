@@ -1,0 +1,15 @@
+{
+  "rotation": 90,
+  "font": "assets/fonts/regular.ttf",
+  "todo_minutes": 30,
+  "weather_minutes": 30,
+  "full_refresh_minutes": 15,
+  "location": "nankai",
+  "locations": {
+    "nankai": {"name": "天津南开", "latitude": 39.14, "longitude": 117.15},
+    "langfang": {"name": "河北廊坊", "latitude": 39.54, "longitude": 116.68}
+  },
+  "fbink": "/usr/bin/fbink",
+  "device": {"verified": false, "suppress_processes": ["awesome"], "frontlight_max": 24},
+  "microsoft": {"client_id": ""}
+}

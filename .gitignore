@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+dist/
+preview/
+todoclock/state/
+todoclock/config/local.json
+todoclock/config/secrets.json
+*.log
+.scratch/

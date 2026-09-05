@@ -1,0 +1,1 @@
+{"items":[{"name":"TodoClock","items":[{"name":"Start","action":"sh bin/start.sh"},{"name":"Stop / Restore","action":"sh bin/stop.sh"},{"name":"Diagnostics (read only)","action":"sh bin/diagnose.sh"},{"name":"Touch calibration","action":"sh bin/calibrate.sh"}]}]}

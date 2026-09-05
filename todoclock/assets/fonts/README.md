@@ -1,0 +1,1 @@
+Place a licensed Chinese TrueType font here as `regular.ttf` (for example Noto Sans SC static TTF). No MRInstaller dependency. Keep the font license alongside it. A system Chinese font is used by the Windows simulator only. The Kindle preflight refuses to start without a usable font.

@@ -1,0 +1,5 @@
+{
+  "microsoft": {"client_id": "YOUR-APPLICATION-CLIENT-ID"},
+  "device": {"verified": false},
+  "font": "assets/fonts/regular.ttf"
+}
