@@ -5,6 +5,7 @@ from .device import SimDevice
 from .render import font_path, hit_test, render
 from .storage import Store
 from .scratch import scratch
+from .interaction import Feedback
 
 
 def make_demo(root, state):
@@ -45,6 +46,7 @@ def simulate(root):
     screen = tk.Label(window)
     screen.pack()
     state = {'hits': [], 'scale': 0.65, 'image': None, 'last': None}
+    feedback = Feedback()
     def offline():
         app.device.set_wifi(not app.device.data['wifi_on'])
         app.status = app.device.status()
@@ -65,11 +67,10 @@ def simulate(root):
             render(app, path)[0].save(filename)
     for label, callback in [('断网 / 联网', offline), ('封皮插拔', cover), ('电量 / 充电', battery), ('日期 +1 天', advance), ('导出 PNG', save)]:
         tk.Button(toolbar, text=label, command=callback).pack(side='left')
-    def click(event):
-        action = hit_test(state['hits'], event.x/state['scale'], event.y/state['scale'])
-        if action:
-            app.action(action)
-    screen.bind('<Button-1>', click)
+    def click(event, kind):
+        feedback.event(kind, (event.x/state['scale'], event.y/state['scale']), state['hits'], app.revision)
+    screen.bind('<ButtonPress-1>', lambda event: click(event, 'press'))
+    screen.bind('<ButtonRelease-1>', lambda event: click(event, 'tap'))
     window.bind('<Left>', lambda _: app.key(-1))
     window.bind('<Right>', lambda _: app.key(1))
     def close():
@@ -81,12 +82,17 @@ def simulate(root):
             close()
             return
         app.tick()
+        action = feedback.take(app.revision)
+        if action:
+            app.action(action)
         image, state['hits'] = render(app, path)
+        image = feedback.paint(image)
         state['scale'] = min(0.72, (window.winfo_screenheight()-160)/image.height, (window.winfo_screenwidth()-80)/image.width)
         size = tuple(int(v*state['scale']) for v in image.size)
         state['image'] = ImageTk.PhotoImage(image.resize(size))
         screen.configure(image=state['image'])
-        window.after(200, update)
+        feedback.shown()
+        window.after(50, update)
     update()
     window.mainloop()
     workspace.__exit__(None, None, None)

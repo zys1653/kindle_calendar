@@ -19,6 +19,7 @@ def hidden_window():
         label = next(child for child in window.winfo_children() if isinstance(child, tk.Label))
         observed.append(bool(label.cget('image')))
         label.event_generate('<Button-1>', x=40, y=330)
+        label.event_generate('<ButtonRelease-1>', x=40, y=330)
         window.event_generate('<Right>')
         for child in window.winfo_children()[0].winfo_children()[:4]:
             child.invoke()

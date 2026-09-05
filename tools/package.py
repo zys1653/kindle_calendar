@@ -26,7 +26,7 @@ def release_files(root=ROOT):
 def build():
     out = ROOT/'dist'
     out.mkdir(exist_ok=True)
-    target = out/'TodoClock-0.1.0.zip'
+    target = out/'TodoClock-0.1.1.zip'
     manifest = {}
     with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for source, name in release_files():

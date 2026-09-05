@@ -10,6 +10,11 @@ from .device import native_to_logical
 EVENT = struct.Struct("@llHHi")
 
 
+def key_direction(code):
+    # Original top key is on the right in the requested buttons-down landscape.
+    return 1 if code in (104, 191, 193) else -1
+
+
 def discover():
     result = {}
     for block in Path("/proc/bus/input/devices").read_text().split("\n\n"):
@@ -103,18 +108,24 @@ class Inputs:
                 self.buffers[fd] = self.buffers[fd][EVENT.size:]
                 kind = self.fds[fd]
                 if kind == "touch":
+                    started = self.frame.start
                     point = self.frame.feed(typ, code, value)
+                    if not raw and started is None and self.frame.start is not None:
+                        press = native_to_logical(*apply_calibration(*self.frame.start[:2], self.calibration), rotation)
+                        events.append(('press', press))
                     if point:
                         if not raw:
                             point = native_to_logical(*apply_calibration(*point, self.calibration), rotation)
                         events.append(("tap", point))
+                    elif not raw and started is not None and self.frame.start is None:
+                        events.append(('cancel', None))
                 elif typ == 1 and kind == "power" and value == 1:
                     events.append(("exit", None))
                 elif typ == 1 and kind == "keys":
                     if value == 1:
                         self.held[code] = time.monotonic()
                         if code in (104, 109, 191, 192, 193, 194):
-                            events.append(("key", -1 if code in (104, 191, 193) else 1))
+                            events.append(("key", key_direction(code)))
                     elif value == 0:
                         self.held.pop(code, None)
         if len(self.held) >= 2 and time.monotonic() - max(self.held.values()) >= 3:

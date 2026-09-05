@@ -12,7 +12,7 @@
 
 ## 2. 安装文件
 
-解压 `TodoClock-0.1.0.zip`，将其中 `todoclock` 文件夹复制到 Kindle 的 `extensions`，使路径为：
+解压 `TodoClock-0.1.1.zip`，将其中 `todoclock` 文件夹复制到 Kindle 的 `extensions`，使路径为：
 
 ```text
 /mnt/us/extensions/todoclock/config.xml
@@ -172,3 +172,16 @@ python3 /tmp/todoclock-runtime/guardian.py restore /tmp/todoclock-runtime
 | device.suppress_processes | awesome | 仅允许 awesome；空列表用于诊断实验，可能被原生界面覆盖 |
 
 时区固定中国标准时间，时间来自 Kindle 系统，不自动改系统时钟。秒级计时使用单调时钟；每 15 秒保存一次运行快照，异常重启可能丢失最近最多约 15 秒进度。正常退出保存最新值，重启恢复为暂停。
+
+
+## 从 0.1.0 升级到 0.1.1
+
+先从设置退出插件，或使用 KUAL 的 Stop/restore。将新版 ZIP 中的 todoclock 文件夹合并覆盖到原目录；保留 config/local.json、config/secrets.json、state 以及自行添加的字体，不要先删除旧目录。安装包不包含这些个人文件。重新启动，无须重新登录或校准。
+
+0.1.1 将翻页箭头改为直接绘制；原竖屏顶端按键（按钮朝下横屏时的右键）执行下一项，另一键上一项。触摸按下时反白，松开后执行；快速点击也保留至少约 180 毫秒的可见反馈。FBInk 必须支持 --wait；等待完成可避免按下与松开两帧被合并，实际延迟取决于墨水屏刷新速度。
+
+电源状态每秒读取本机 sysfs，变化才局部刷新；Wi-Fi/亮度的较慢查询在后台进行。读取间隔不等于驱动报告的延迟。如果封皮节点存在却没有可靠 present 信号，显示“封皮未知”，不把残留 capacity 当成仍在位。需要进一步适配时，分别在封皮装上和拔下后运行诊断，提供 state/diagnostics.json 中 battery 与 power_sources 两段。
+
+天气失败时，点击设置中的天气测试，等待请求结束，提供最新 job_failed weather 行及屏幕错误文字。例如 kind=HTTP_ERROR stage=current status=403 表示实时接口拒绝访问；DNS_ERROR 表示域名解析失败；TLS_ERROR 表示证书或握手失败；READ_TIMEOUT 表示读取超时；SCHEMA_ERROR 表示响应缺少预期字段。HTTP 401 检查 Key，403 检查该项目权限，402 检查额度，429 等待限流重试。TLS 失败先检查 Kindle 日期时间和已有证书配置，不要关闭 HTTPS 证书验证。失败后的重试仍遵守退避时间（通常至少 60 秒），未到时间时不会再次发送请求。
+
+无需提供 API Key、secrets.json 或令牌文件。新版只是补齐诊断，原有单条 ServiceError 日志不足以保证连接故障已解决。

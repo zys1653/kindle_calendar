@@ -93,51 +93,57 @@ def framebuffer():
             "xoffset": var[4], "yoffset": var[5], "stride": fixed.line_length}
 
 
-def battery_status():
-    result = {"battery": None, "charging": False, "cover": None, "cover_present": False,
-              "cover_charging": False}
-    for path in Path("/sys/class/power_supply").glob("*"):
+def battery_status(sys_root=Path('/sys'), allow_lipc=True):
+    sys_root = Path(sys_root)
+    def read(path, name):
         try:
-            if (path / "type").read_text().strip().lower() != "battery":
-                continue
-            is_cover = any(word in path.name.lower() for word in ("cover", "aux", "soda"))
-            present = not (path / "present").exists() or (path / "present").read_text().strip() == "1"
-            if not present:
-                continue
-            try:
-                capacity = int((path / "capacity").read_text())
-            except (ValueError, OSError):
-                capacity = None
-            status = (path / "status").read_text().strip()
-            if is_cover:
-                result.update(cover=capacity, cover_present=True, cover_charging=status == "Charging")
-            else:
-                result.update(battery=capacity, charging=status == "Charging")
+            return (path / name).read_text().strip()
         except OSError:
+            return None
+    def capacity(path, name='capacity'):
+        try:
+            value = int(read(path, name))
+            return value if 0 <= value <= 100 else None
+        except (ValueError, TypeError):
+            return None
+    result = dict(battery=None, charging=False, cover=None, cover_present=None,
+                  cover_charging=False, external_power=False)
+    covers = []
+    for path in (sys_root / 'class/power_supply').glob('*'):
+        kind = (read(path, 'type') or '').lower()
+        if kind != 'battery':
+            if kind in ('usb', 'mains', 'usb_dcp', 'usb_cdp', 'usb_c', 'wireless'):
+                result['external_power'] |= read(path, 'online') == '1'
             continue
-    # KOA1 uses a separate soda fuel gauge, which may not appear in the class view.
-    soda = Path('/sys/devices/platform/soda/power_supply/soda_fg')
-    try:
-        status = (soda / 'status').read_text().strip()
-        result.update(cover_present=True, cover_charging=status == 'Charging')
-        try:
-            result['cover'] = int((soda / 'capacity').read_text())
-        except (OSError, ValueError):
-            result['cover'] = None
-    except OSError:
-        pass
+        if any(word in path.name.lower() for word in ('cover', 'aux', 'soda')):
+            covers.append(path)
+        elif read(path, 'present') != '0':
+            result.update(battery=capacity(path), charging=read(path, 'status') == 'Charging')
+    soda = sys_root / 'devices/platform/soda/power_supply/soda_fg'
+    if soda.exists():
+        covers.append(soda)
+    # Explicit absence wins across class/platform aliases. A lingering fuel-gauge
+    # capacity or status file alone is not proof that the cover is attached.
+    presence = [read(path, 'present') for path in covers]
+    if '0' in presence or not covers:
+        result['cover_present'] = False
+    elif '1' in presence:
+        attached = next(path for path in covers if read(path, 'present') == '1')
+        result.update(cover_present=True, cover=capacity(attached),
+                      cover_charging=read(attached, 'status') == 'Charging')
     if result['battery'] is None:
+        result['battery'] = capacity(sys_root / 'devices/system/wario_battery/wario_battery0', 'battery_capacity')
+    # Charging is independent of which source provided capacity.
+    charging = read(sys_root / 'devices/system/wario_charger/wario_charger0', 'charging')
+    if charging in ('0', '1'):
+        result['charging'] = charging == '1'
+    if result['battery'] is None and allow_lipc:
         try:
-            result['battery'] = int(Path('/sys/devices/system/wario_battery/wario_battery0/battery_capacity').read_text())
-            result['charging'] = bool(int(Path('/sys/devices/system/wario_charger/wario_charger0/charging').read_text()))
-        except (OSError, ValueError):
-            pass
-    if result["battery"] is None:
-        try:
-            result["battery"] = lipc_get("com.lab126.powerd", "battLevel")
-            result["charging"] = bool(lipc_get("com.lab126.powerd", "isCharging"))
+            result['battery'] = lipc_get('com.lab126.powerd', 'battLevel')
+            result['charging'] = bool(lipc_get('com.lab126.powerd', 'isCharging'))
         except (RuntimeError, ValueError):
             pass
+    result['external_power'] |= result['charging']
     return result
 
 
@@ -156,7 +162,7 @@ class Kindle:
             raise RuntimeError("不支持的 framebuffer stride")
         # --help exits successfully on normal FBInk builds; inspect actual installed build.
         help_text = command([self.config["fbink"], "--help"])
-        for option in ("--image", "--waveform", "--flash", "--refresh"):
+        for option in ("--image", "--waveform", "--flash", "--refresh", "--wait"):
             if option not in help_text:
                 raise RuntimeError("FBInk 缺少能力: " + option)
         return info
@@ -178,13 +184,16 @@ class Kindle:
             return
         path = self.runtime / "frame.png"
         image.crop(box).save(path)
-        args = [self.config["fbink"], "-q", "-g", "file={},x={},y={}".format(path, box[0], box[1]), "-W", "GC16"]
+        args = [self.config["fbink"], "-q", "-w", "-g", "file={},x={},y={}".format(path, box[0], box[1]), "-W", "GC16"]
         if full:
             args.append("-f")
         command(args, 10)
         self.previous = image
         if full:
             self.last_full = now
+
+    def power_status(self):
+        return battery_status(allow_lipc=False)
 
     def status(self):
         result = battery_status()
@@ -215,6 +224,9 @@ class SimDevice:
     def __init__(self):
         self.data = dict(battery=82, charging=True, cover=64, cover_present=True,
                          cover_charging=False, wifi="已连接", wifi_on=True, light=0)
+
+    def power_status(self):
+        return {k: v for k, v in self.data.items() if k not in ('wifi', 'wifi_on', 'light')}
 
     def status(self):
         return dict(self.data)

@@ -78,9 +78,15 @@ class Canvas:
 
     def button(self, box, label, action, selected=False, size=27):
         self.draw.rectangle(box, fill=0 if selected else 255, outline=0, width=2)
-        fnt = font(self.path, size)
-        width = fnt.getlength(label)
-        self.text((box[0] + max(10, (box[2]-box[0]-width)/2), box[1] + (box[3]-box[1]-size)/2-4), label, size, 255 if selected else 0)
+        if label in ('‹', '›'):
+            x, y = (box[0]+box[2])/2, (box[1]+box[3])/2
+            sign = 1 if label == '›' else -1
+            self.draw.line([(x-sign*7, y-12), (x+sign*7, y), (x-sign*7, y+12)],
+                           fill=255 if selected else 0, width=4)
+        else:
+            fnt = font(self.path, size)
+            width = fnt.getlength(label)
+            self.text((box[0] + max(10, (box[2]-box[0]-width)/2), box[1] + (box[3]-box[1]-size)/2-4), label, size, 255 if selected else 0)
         if action:
             self.hits.append((box, action))
 
@@ -97,8 +103,12 @@ def render(app, path):
     c.text((w-440, 24), app.place['name'] + '  ' + number(current['temp'], current['temp_unit']), 29)
     c.lines((w-440, 67), current['text'] + ' · 和风天气', 400, 22, 1)
     battery = '本体 ' + number(app.status.get('battery'), '%') + (' 充电' if app.status.get('charging') else '')
+    if app.status.get('external_power') and not app.status.get('charging'):
+        battery += ' 已接电'
     if app.status.get('cover_present'):
         battery += ' / 封皮 ' + number(app.status.get('cover'), '%') + (' 充电' if app.status.get('cover_charging') else '')
+    elif app.status.get('cover_present') is None:
+        battery += ' / 封皮 未知'
     c.text((28, 88), 'Wi-Fi ' + app.status.get('wifi', '未知') + '   ' + battery, 22)
     def stale(name, fetched):
         interval = app.config[name+'_minutes'] or 30

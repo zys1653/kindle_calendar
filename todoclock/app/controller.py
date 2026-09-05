@@ -18,6 +18,8 @@ class Controller:
         self.store = store or Store(self.root / 'state')
         self.logger = logging.getLogger('todoclock')
         self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sync')
+        self.status_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='device-status')
+        self.status_future = None
         self.jobs = {}
         self.next_due = {'weather': 0, 'todo': 0, 'flush': 0}
         self.errors, self.failures = {}, {}
@@ -41,6 +43,7 @@ class Controller:
         self.revision = 0
         self.last_save = time.monotonic()
         self.last_status = 0
+        self.last_power = 0
         self.debug_until = 0
         self.status = device.status()
         self.build_services()
@@ -102,6 +105,12 @@ class Controller:
 
     def tick(self):
         mono = time.monotonic()
+        if mono - self.last_power >= 1:
+            power = self.device.power_status()
+            if any(self.status.get(k) != v for k, v in power.items()):
+                self.status.update(power)
+                self.revision += 1
+            self.last_power = mono
         old_day = self.now.date()
         self.now = datetime.now(CHINA) + self.time_shift
         if self.now.date() != old_day:
@@ -117,11 +126,19 @@ class Controller:
             self.rotation_pending, self.modal = None, None
             self.force_refresh = True
             self.revision += 1
-        if mono - self.last_status >= 20:
-            status = self.device.status()
-            if status != self.status:
-                self.status = status
+        if self.status_future is not None and self.status_future.done():
+            try:
+                status = self.status_future.result()
+            except Exception:
+                status = {'wifi': '未知', 'wifi_on': None, 'light': None}
+            self.status_future = None
+            # Never overwrite fresh power readings with an older background snapshot.
+            status = {k: v for k, v in status.items() if k in ('wifi', 'wifi_on', 'light')}
+            if any(self.status.get(k) != v for k, v in status.items()):
+                self.status.update(status)
                 self.revision += 1
+        if mono - self.last_status >= 20 and self.status_future is None:
+            self.status_future = self.status_worker.submit(self.device.status)
             self.last_status = mono
         if self.debug_until and mono >= self.debug_until:
             self.logger.setLevel(logging.INFO)
@@ -151,13 +168,15 @@ class Controller:
                 self.next_due[name] = mono if name.startswith('login') else mono + (self.config.get(name + '_minutes', 1) * 60 or 86400)
                 self.logger.info('job_success %s', name)
             except Exception as exc:
-                safe = str(exc) if isinstance(exc, ServiceError) else '内部错误，请查看诊断'
+                safe = exc.diagnostic() if isinstance(exc, ServiceError) else '内部错误，请查看诊断'
                 self.errors[name] = safe
                 self.notice = safe
                 self.failures[name] = self.failures.get(name, 0) + 1
                 retry = max(getattr(exc, 'retry_after', 60), min(1800, 30 * 2 ** min(6, self.failures[name])))
                 self.next_due[name] = mono + retry
-                self.logger.warning('job_failed %s %s', name, type(exc).__name__)
+                self.logger.warning('job_failed %s kind=%s stage=%s status=%s', name,
+                                    getattr(exc, 'kind', 'INTERNAL_ERROR'),
+                                    getattr(exc, 'stage', 'request'), getattr(exc, 'status', 0))
                 if name.startswith('login'):
                     self.login = None
                     self.modal = ('登录失败', safe, [])
@@ -376,3 +395,4 @@ class Controller:
         self.login = None
         self.save_timers()
         self.worker.shutdown(wait=False, cancel_futures=True)
+        self.status_worker.shutdown(wait=False, cancel_futures=True)

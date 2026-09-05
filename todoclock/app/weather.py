@@ -13,7 +13,7 @@ def api_origin(host):
         host = host[8:]
     host = host.rstrip("/")
     if not re.fullmatch(r"[A-Za-z0-9-]+\.qweatherapi\.com", host):
-        raise ServiceError("API Host 应为控制台提供的 xxx.qweatherapi.com 主机名")
+        raise ServiceError("API Host 应为控制台提供的 xxx.qweatherapi.com 主机名", kind='CONFIG_ERROR')
     return "https://" + host.lower()
 
 
@@ -72,7 +72,7 @@ class QWeather:
         origin = api_origin(self.credentials.get("api_host", ""))
         key = self.credentials.get("api_key", "").strip()
         if not key:
-            raise ServiceError("请填写和风 API Key")
+            raise ServiceError("请填写和风 API Key", kind='CONFIG_ERROR')
         cache = self.cached(place)
         errors = []
         for part in ("current", "daily", "hourly"):
@@ -86,11 +86,12 @@ class QWeather:
             try:
                 data = self.http.request("GET", url, params=params, headers={"X-QW-Api-Key": key})
                 if not isinstance(data, dict) or (part == "daily" and not isinstance(data.get("days"), list)) or (part == "hourly" and not isinstance(data.get("hours"), list)) or (part == "current" and "temperature" not in data):
-                    raise ServiceError("天气数据结构不完整")
+                    raise ServiceError("天气数据结构不完整", kind='SCHEMA_ERROR')
                 cache[part] = {"data": data, "fetched": time.time()}
                 cache.pop(part + "_error", None)
             except ServiceError as exc:
-                cache[part + "_error"] = str(exc)
+                exc.stage = part
+                cache[part + "_error"] = exc.diagnostic()
                 errors.append(exc)
             self.store.update("weather.json", {}, lambda all_data: all_data.update({self.cache_key(place): cache}))
             # Do not multiply requests after an authentication / quota / throttle error.
