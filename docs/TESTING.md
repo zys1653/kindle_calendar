@@ -13,7 +13,7 @@ python todoclock/run.py preview
 
 自动测试覆盖：
 
-当前结果：**61 项 unittest 通过**；静态检查与隐藏 Tk 冒烟测试通过。四个 KUAL shell 脚本通过 `sh -n` 检查；ZIP 的 CRC、逐文件 SHA256 清单及敏感文件排除检查通过。
+当前结果：**63 项 unittest 通过**；静态检查与隐藏 Tk 冒烟测试通过。四个 KUAL shell 脚本通过 `sh -n` 检查；ZIP 的 CRC、逐文件 SHA256 清单及敏感文件排除检查通过。
 
 - 原子写中断保留旧队列，坏 JSON 显式报错，配置合并与校验。
 - 请求头认证、Host 校验、拒绝跳转、超时/429、错误脱敏。
@@ -58,3 +58,9 @@ python todoclock/run.py preview
 异常测试请先确认 SSH 和正常 stop 命令可用。读取 `/tmp/todoclock-runtime/owner.json` 中 child PID，在设备上核对 `/proc/PID/cmdline` 对应本插件后再发信号。不要凭旧 PID 或使用 killall 执行故障注入。`SIGSTOP` 模拟应用卡住，45 秒心跳阈值加终止等待和恢复命令时间后应恢复。
 
 硬件失败时保留 `state/diagnostics.json`、脱敏日志和屏幕现象；不上传 token.json、secrets.json 或整个任务缓存。只有收集真机证据后才能将对应项改为通过。
+
+
+## 0.1.2 回归检查
+
+新增两项测试：官方地区子域名格式及大小写处理；多层域名中的空标签、非法连字符、超长标签、域名后缀伪装、用户信息、端口、路径和非 HTTPS 拒绝。共 63 项 unittest 通过；静态检查、隐藏 Tk 冒烟和 20 张页面渲染通过。未使用用户凭据发起请求或将凭据写入文件。
+本轮首次并行执行时，已有计时测试在 Windows 原子替换临时文件时出现一次 PermissionError；未改代码，单独重跑完整 63 项测试通过。此现象记录为电脑环境的间歇文件访问失败，未推断为 Kindle 故障。

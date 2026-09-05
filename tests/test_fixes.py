@@ -16,11 +16,27 @@ from app.network import HTTP, ServiceError
 from app.render import Canvas
 from app.scratch import scratch
 from app.simulator import make_demo
-from app.weather import QWeather
+from app.weather import QWeather, api_origin
 from app.storage import Store
 
 
 class FixTests(unittest.TestCase):
+    def test_regional_api_hosts(self):
+        self.assertEqual(api_origin('https://example.re.qweatherapi.com/'),
+                         'https://example.re.qweatherapi.com')
+        self.assertEqual(api_origin(' EXAMPLE.XY.QWEATHERAPI.COM '),
+                         'https://example.xy.qweatherapi.com')
+
+    def test_regional_host_validation_rejects_invalid_destinations(self):
+        for host in ('qweatherapi.com', '.re.qweatherapi.com', 'example..qweatherapi.com',
+                     '-example.re.qweatherapi.com', 'example-.re.qweatherapi.com',
+                     'example.re.qweatherapi.com.evil.org', 'example.re.qweatherapi.com@evil.org',
+                     'example.re.qweatherapi.com:443', 'example.re.qweatherapi.com/path',
+                     'example.re.qweatherapi.com?key=x', 'http://example.re.qweatherapi.com',
+                     'a'*64 + '.re.qweatherapi.com'):
+            with self.subTest(host=host), self.assertRaises(ServiceError):
+                api_origin(host)
+
     def test_keys_follow_physical_right_next(self):
         self.assertEqual(key_direction(104), 1)
         self.assertEqual(key_direction(109), -1)

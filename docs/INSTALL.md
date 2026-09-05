@@ -12,7 +12,7 @@
 
 ## 2. 安装文件
 
-解压 `TodoClock-0.1.1.zip`，将其中 `todoclock` 文件夹复制到 Kindle 的 `extensions`，使路径为：
+解压 `TodoClock-0.1.2.zip`，将其中 `todoclock` 文件夹复制到 Kindle 的 `extensions`，使路径为：
 
 ```text
 /mnt/us/extensions/todoclock/config.xml
@@ -185,3 +185,12 @@ python3 /tmp/todoclock-runtime/guardian.py restore /tmp/todoclock-runtime
 天气失败时，点击设置中的天气测试，等待请求结束，提供最新 job_failed weather 行及屏幕错误文字。例如 kind=HTTP_ERROR stage=current status=403 表示实时接口拒绝访问；DNS_ERROR 表示域名解析失败；TLS_ERROR 表示证书或握手失败；READ_TIMEOUT 表示读取超时；SCHEMA_ERROR 表示响应缺少预期字段。HTTP 401 检查 Key，403 检查该项目权限，402 检查额度，429 等待限流重试。TLS 失败先检查 Kindle 日期时间和已有证书配置，不要关闭 HTTPS 证书验证。失败后的重试仍遵守退避时间（通常至少 60 秒），未到时间时不会再次发送请求。
 
 无需提供 API Key、secrets.json 或令牌文件。新版只是补齐诊断，原有单条 ServiceError 日志不足以保证连接故障已解决。
+
+
+## 0.1.2 和风 Host 校验修复
+
+旧版错误地只允许单层子域名，导致控制台分配的 account.re.qweatherapi.com 一类地址在请求前报 CONFIG_ERROR。新版允许 qweatherapi.com 下的合法多层子域名，同时继续拒绝第三方域名、端口、路径和非 HTTPS 地址。请完整复制控制台 Host，保留地区段，不要手动删除 .re 等中间部分。
+
+来源：https://dev.qweather.com/docs/configuration/api-host/
+
+退出插件后合并覆盖新版安装包，保留 config/local.json、config/secrets.json、state 和字体，再启动测试天气。此修复已验证本地校验；真实服务认证和网络连接仍需真机测试。

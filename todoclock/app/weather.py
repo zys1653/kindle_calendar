@@ -12,8 +12,10 @@ def api_origin(host):
     if host.startswith("https://"):
         host = host[8:]
     host = host.rstrip("/")
-    if not re.fullmatch(r"[A-Za-z0-9-]+\.qweatherapi\.com", host):
-        raise ServiceError("API Host 应为控制台提供的 xxx.qweatherapi.com 主机名", kind='CONFIG_ERROR')
+    # Assigned hosts may include a region label, e.g. account.re.qweatherapi.com.
+    label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    if len(host) > 253 or not re.fullmatch(r"(?:" + label + r"\.)+qweatherapi\.com", host, re.IGNORECASE):
+        raise ServiceError("API Host 应为控制台提供的完整 qweatherapi.com 子域名（保留地区段）", kind='CONFIG_ERROR')
     return "https://" + host.lower()
 
 
