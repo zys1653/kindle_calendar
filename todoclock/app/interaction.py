@@ -1,6 +1,15 @@
-"""Visible press feedback shared by the device and desktop simulator."""
+"""Input actions execute immediately; feedback never gates another gesture."""
 import time
 from PIL import ImageChops
+
+
+def context(app):
+    return (app.page, id(app.modal), app.modal_page, app.config['rotation'],
+            app.list_index if app.page == 'todo' else None,
+            app.task_page if app.page == 'todo' else None,
+            app.settings_page if app.page == 'settings' else None,
+            app.timer_tab if app.page == 'timer' else None,
+            (app.show_hours if app.show_hours is not None else app.weather_view['rain']) if app.page == 'weather' else None)
 
 
 class Feedback:
@@ -9,26 +18,33 @@ class Feedback:
         self.clear()
 
     def clear(self):
-        self.region = None
-        self.revision = None
-        self.pending = False
-        self.shown_at = None
-        self.since = self.clock()
+        self.region = self.pressed = self.revision = None
+        self.until = 0
 
     def event(self, kind, point, hits, revision):
         if kind == 'cancel':
             self.clear()
-            return
+            return None
         region = next(((box, action) for box, action in reversed(hits)
                        if box[0] <= point[0] <= box[2] and box[1] <= point[1] <= box[3]), None)
-        if kind == 'press' and not self.pending:
+        if kind == 'press':
+            self.pressed = self.region = region
+            self.revision = revision
+            self.until = self.clock() + .08
+        elif kind == 'tap':
+            valid = region and region == self.pressed and revision == self.revision
+            self.pressed = None
+            if valid:
+                self.region, self.until = region, self.clock() + .08
+                return region[1]
             self.clear()
-            self.region, self.revision = region, revision
-        elif kind == 'tap' and not self.pending:
-            if self.region != region or revision != self.revision:
-                self.clear()
-            elif region:
-                self.pending = True
+        return None
+
+    def expire(self, revision):
+        if revision != self.revision:
+            self.clear()
+        elif self.clock() >= self.until:
+            self.region = None
 
     def paint(self, image):
         if self.region:
@@ -37,18 +53,3 @@ class Feedback:
             box = (int(a)+3, int(b)+3, int(c)-2, int(d)-2)
             image.paste(ImageChops.invert(image.crop(box)), box)
         return image
-
-    def shown(self):
-        if self.region and self.shown_at is None:
-            self.shown_at = self.clock()
-
-    def take(self, revision):
-        if not self.region:
-            return None
-        if revision != self.revision or self.clock() - self.since > 3:
-            self.clear()
-            return None
-        if self.pending and self.shown_at is not None and self.clock() - self.shown_at >= 0.18:
-            action = self.region[1]
-            self.clear()
-            return action

@@ -94,56 +94,14 @@ def framebuffer():
 
 
 def battery_status(sys_root=Path('/sys'), allow_lipc=True):
-    sys_root = Path(sys_root)
-    def read(path, name):
-        try:
-            return (path / name).read_text().strip()
-        except OSError:
-            return None
-    def capacity(path, name='capacity'):
-        try:
-            value = int(read(path, name))
-            return value if 0 <= value <= 100 else None
-        except (ValueError, TypeError):
-            return None
-    result = dict(battery=None, charging=False, cover=None, cover_present=None,
-                  cover_charging=False, external_power=False)
-    covers = []
-    for path in (sys_root / 'class/power_supply').glob('*'):
-        kind = (read(path, 'type') or '').lower()
-        if kind != 'battery':
-            if kind in ('usb', 'mains', 'usb_dcp', 'usb_cdp', 'usb_c', 'wireless'):
-                result['external_power'] |= read(path, 'online') == '1'
-            continue
-        if any(word in path.name.lower() for word in ('cover', 'aux', 'soda')):
-            covers.append(path)
-        elif read(path, 'present') != '0':
-            result.update(battery=capacity(path), charging=read(path, 'status') == 'Charging')
-    soda = sys_root / 'devices/platform/soda/power_supply/soda_fg'
-    if soda.exists():
-        covers.append(soda)
-    # Explicit absence wins across class/platform aliases. A lingering fuel-gauge
-    # capacity or status file alone is not proof that the cover is attached.
-    presence = [read(path, 'present') for path in covers]
-    if '0' in presence or not covers:
-        result['cover_present'] = False
-    elif '1' in presence:
-        attached = next(path for path in covers if read(path, 'present') == '1')
-        result.update(cover_present=True, cover=capacity(attached),
-                      cover_charging=read(attached, 'status') == 'Charging')
-    if result['battery'] is None:
-        result['battery'] = capacity(sys_root / 'devices/system/wario_battery/wario_battery0', 'battery_capacity')
-    # Charging is independent of which source provided capacity.
-    charging = read(sys_root / 'devices/system/wario_charger/wario_charger0', 'charging')
-    if charging in ('0', '1'):
-        result['charging'] = charging == '1'
+    from .power import sample
+    result = sample(sys_root)
     if result['battery'] is None and allow_lipc:
         try:
             result['battery'] = lipc_get('com.lab126.powerd', 'battLevel')
             result['charging'] = bool(lipc_get('com.lab126.powerd', 'isCharging'))
         except (RuntimeError, ValueError):
             pass
-    result['external_power'] |= result['charging']
     return result
 
 
@@ -153,6 +111,8 @@ class Kindle:
         self.runtime.mkdir(parents=True, exist_ok=True)
         self.previous = None
         self.last_full = 0
+        from .power import CoverTracker
+        self.cover_tracker = CoverTracker()
 
     def probe(self):
         info = framebuffer()
@@ -193,7 +153,7 @@ class Kindle:
             self.last_full = now
 
     def power_status(self):
-        return battery_status(allow_lipc=False)
+        return self.cover_tracker.update(battery_status(allow_lipc=False))
 
     def status(self):
         result = battery_status()

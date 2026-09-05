@@ -2,7 +2,7 @@
 
 Kindle Oasis 1（第八代）KUAL 信息屏：顶部状态栏、左侧导航、Microsoft To Do、整月日历、和风天气、倒计时/秒表和设备设置。
 
-**版本 0.1.2：已完成电脑仿真与自动测试，尚未在你的 Kindle 上验证。** 不会自动连接设备。首次安装先诊断、校准，再启用完整接管。
+**版本 0.1.3：已完成电脑仿真与自动测试，尚未在你的 Kindle 上验证。** 不会自动连接设备。首次安装先诊断、校准，再启用完整接管。
 
 ## 电脑快速预览
 
@@ -13,7 +13,7 @@ python -m pip install -r requirements-dev.txt
 python todoclock/run.py simulate
 ```
 
-仿真使用隔离假数据，鼠标操作屏幕、左右键切列表/月份；工具栏可模拟断网、封皮插拔、电量/充电和日期推进。临时数据在 `.scratch/`，正常退出清理，不访问微软或和风服务。
+仿真使用隔离假数据，鼠标操作屏幕、左右键切列表/月份/逐小时天气；工具栏可模拟断网、封皮插拔、电量/充电和日期推进。临时数据在 `.scratch/`，正常退出清理，不访问微软或和风服务。
 
 ```powershell
 python todoclock/run.py preview
@@ -48,7 +48,8 @@ python -m unittest discover -s tests -v
 python tools/check.py
 python tools/ui_smoke.py
 python todoclock/run.py preview
+python tools/visual_checks.py
 python tools/package.py
 ```
 
-产物：`dist/TodoClock-0.1.2.zip`、对应 SHA256 文件。打包脚本仅包含明确列出的代码、示例配置和文档，不包含本地配置、令牌、待办、日志或设备恢复记录。
+产物：`dist/TodoClock-0.1.3.zip`、对应 SHA256 文件。打包脚本仅包含明确列出的代码、示例配置和文档，不包含本地配置、令牌、待办、日志或设备恢复记录。

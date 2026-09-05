@@ -4,7 +4,7 @@
 
 ```text
 KUAL → launch → /tmp 独立 guardian → Kindle 主循环
-触摸/按键 → Controller.action → 状态变化 → render → Pillow 图像/点击区域
+触摸/按键 → Controller.action → 状态变化 → render → Pillow 图像/点击区域 → 串行显示线程 → FBInk
 后台串行任务 → Microsoft / QWeather → 原子 JSON 缓存 → Controller → 页面
 应用退出或心跳超时 → guardian → 校验身份、释放输入、恢复原状态
 ```
@@ -16,7 +16,7 @@ KUAL → launch → /tmp 独立 guardian → Kindle 主循环
 | 模块 | 接口 | 约定 |
 |---|---|---|
 | 页面 | `render(controller, font_path) -> (Image, hits)` | L 模式图像；hits 为 `(矩形, action 元组)` |
-| 输入 | `Inputs.poll(rotation)` | tap、key、exit；仅完整点击帧产生 tap |
+| 输入 | `Inputs.poll(rotation)` | press、tap、cancel、key、exit；仅完整点击帧产生 tap |
 | 显示 | `Kindle.show(image, force=False)` | 软件旋转后比较原生方向脏矩形，GC16；周期性全刷 |
 | 设备 | `status / set_wifi / set_light` | Kindle/SimDevice 两种实现 |
 | 天气 | `cached(place) / sync(place)` | 按经纬度隔离缓存，规范化数据与 API 无关 |
@@ -44,3 +44,14 @@ KUAL → launch → /tmp 独立 guardian → Kindle 主循环
 Graph 完成操作先 GET 检查状态与修改时间，再 PATCH；可用时使用 ETag 条件提交。没有 ETag 时仅提供尽力冲突检测。发生删除、移动、权限变化不猜测目标，不重复创建任务。
 
 登录暂时不支持多账户或免注销账户切换；计时暂时不支持跨重启继续运行；设备暂时仅针对已提供参数的 KOA1，其他固件需要先探测和验证。
+
+
+## 0.1.3 输入与显示分离
+
+Feedback.event 在有效松开时直接返回 action；80 毫秒视觉状态不锁住输入。主循环使用最近完成显示的页面上下文与命中区；新页面显示完成前不把旧页面触摸映射到新页面。任务点击携带 list_id/task_id，原有整数索引仅供内部兼容调用。
+
+Display 独占 Kindle.show，提交时复制图像、配置和命中区。条件变量保护一帧正在执行、一帧可替换的待显示任务，待显示任务的 force 标志按 OR 保留。GC16 与 --wait 在显示线程运行；只有成功完成的画面更新命中快照。异常回报主循环后退出恢复。退出取消待显示帧并等待当前有超时保护的命令结束，避免恢复画面后旧写入覆盖屏幕。
+
+power.sample 提供单次读取结果和 cover_evidence；Kindle.power_status 在每秒采样时用 CoverTracker 解释连续无数据。后台 Wi-Fi 查询不能改变计数或覆盖当前电量。live_gauge 是依据 KOA1 实测推断在位，不代表所有固件都提供明确硬件连接信号。诊断只输出允许的字段值及读取分类。
+
+天气每页容量统一为 layout.HOURS_PER_PAGE=4。icons 是原创 Pillow 线条绘图；天气代码映射参考 https://dev.qweather.com/docs/api/weather/weather-conditions/ ，未知代码保留天气文字并使用中性图标。页脚来源入口打开本地数据详情，不启动浏览器。

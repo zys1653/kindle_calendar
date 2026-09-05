@@ -8,6 +8,7 @@ from .microsoft import Microsoft, task_views, tasks_for
 from .network import ServiceError
 from .storage import Store, configuration
 from .timers import Timer
+from .layout import hour_page
 from .weather import CHINA, QWeather, view
 
 
@@ -215,6 +216,8 @@ class Controller:
             self.refresh_cache()
         elif self.page == 'calendar':
             self.move_month(delta)
+        elif self.page == 'weather' and (self.show_hours if self.show_hours is not None else self.weather_view['rain']):
+            self.weather_page = hour_page(self.weather_page + delta, len(self.weather_view['hours']))[0]
 
     def action(self, action):
         self.revision += 1
@@ -244,7 +247,14 @@ class Controller:
         elif name == 'todo_sync':
             self.sync_todo(True)
         elif name in ('complete', 'detail'):
-            list_id, task = self.tasks[args[0]]
+            if len(args) == 1:  # Compatibility for internal callers; UI uses stable IDs.
+                list_id, task = self.tasks[args[0]]
+            else:
+                match = next(((lid, t) for lid, t in self.tasks if (lid, t['id']) == tuple(args)), None)
+                if match is None:
+                    self.notice = '此任务已变化，请重新选择'
+                    return
+                list_id, task = match
             if name == 'complete':
                 self.microsoft.enqueue(list_id, task)
                 self.next_due['flush'] = 0
@@ -277,7 +287,7 @@ class Controller:
         elif name == 'weather_info':
             from .render import timestamp
             cache = self.weather.cached(self.place)
-            lines = ['数据来源：和风天气 QWeather']
+            lines = ['数据来源：QWeather', 'https://www.qweather.com']
             for part, label in [('current', '实时'), ('daily', '每日'), ('hourly', '小时')]:
                 lines.append('{}获取时间：{}'.format(label, timestamp(cache.get(part, {}).get('fetched', 0))))
                 if part+'_error' in cache:
@@ -288,10 +298,7 @@ class Controller:
         elif name == 'hours':
             self.show_hours = not (self.show_hours if self.show_hours is not None else self.weather_view['rain'])
         elif name == 'weather_page':
-            from .device import dimensions
-            capacity = max(1, (dimensions(self.config['rotation'])[1]-680)//58)
-            pages = max(1, (len(self.weather_view['hours'])+capacity-1)//capacity)
-            self.weather_page = max(0, min(pages-1, self.weather_page + args[0]))
+            self.weather_page = hour_page(self.weather_page + args[0], len(self.weather_view['hours']))[0]
         elif name == 'location':
             keys = list(self.config['locations'])
             self.config['location'] = keys[(keys.index(self.config['location']) + 1) % len(keys)]

@@ -48,21 +48,20 @@ class FixTests(unittest.TestCase):
         self.assertEqual(c.image.getpixel((28, 35)), 0)
         self.assertEqual(c.image.getpixel((122, 35)), 0)
 
-    def test_quick_tap_waits_for_visible_frame(self):
+    def test_quick_tap_executes_without_waiting_for_frame(self):
         now = [0.0]
         feedback = Feedback(lambda: now[0])
-        hits = [((0, 0, 40, 40), ('page', 'weather'))]
-        feedback.event('press', (20, 20), hits, 1)
-        feedback.event('tap', (20, 20), hits, 1)
-        now[0] = 1
-        self.assertIsNone(feedback.take(1))
+        hits = [((0, 0, 40, 40), ('duration', 1))]
+        for _ in range(10):
+            feedback.event('press', (20, 20), hits, 1)
+            self.assertEqual(feedback.event('tap', (20, 20), hits, 1), ('duration', 1))
         base = Image.new('L', (50, 50), 255)
         self.assertEqual(feedback.paint(base).getpixel((20, 20)), 0)
         self.assertEqual(base.getpixel((20, 20)), 255)
-        feedback.shown()
-        now[0] += .2
-        self.assertEqual(feedback.take(1), ('page', 'weather'))
-        self.assertIsNone(feedback.take(1))
+        now[0] = .09
+        feedback.expire(1)
+        self.assertIsNone(feedback.region)
+        self.assertIsNone(feedback.event('tap', (20, 20), hits, 1))
 
     def test_cancel_drag_and_changed_content_never_dispatch(self):
         hits = [((0, 0, 40, 40), ('complete', 0))]
@@ -139,7 +138,6 @@ class FixTests(unittest.TestCase):
             path = root / 'devices/platform/soda/power_supply/soda_fg'
             path.mkdir(parents=True)
             (path / 'capacity').write_text('60')
-            (path / 'status').write_text('Discharging')
             status = battery_status(root, False)
             self.assertIsNone(status['cover_present'])
             self.assertIsNone(status['cover'])

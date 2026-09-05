@@ -22,22 +22,8 @@ def diagnose(root, config, simulated=False):
     except OSError:
         report['inputs'] = {}
     report['battery'] = battery_status()
-    report['power_sources'] = {}
-    paths = list(Path('/sys/class/power_supply').glob('*'))
-    paths += [Path('/sys/devices/platform/soda/power_supply/soda_fg'),
-              Path('/sys/devices/system/wario_charger/wario_charger0')]
-    for path in paths:
-        values = {}
-        for field in ('type', 'present', 'online', 'status', 'capacity', 'charging'):
-            try:
-                value = (path / field).read_text().strip()
-                if value.isdigit() or value in ('Battery', 'USB', 'Mains', 'Charging', 'Discharging',
-                                                'Not charging', 'Full', 'Unknown'):
-                    values[field] = value
-            except OSError:
-                pass
-        if values:
-            report['power_sources'][str(path)] = values
+    from .power import diagnostics
+    report['power_sources'] = diagnostics()
     report['properties'] = {}
     for service, name in [('com.lab126.powerd', 'preventScreenSaver'), ('com.lab126.powerd', 'flIntensity'),
                           ('com.lab126.cmd', 'wirelessEnable'), ('com.lab126.wifid', 'enable'), ('com.lab126.wifid', 'cmState')]:

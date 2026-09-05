@@ -12,7 +12,7 @@
 
 ## 2. 安装文件
 
-解压 `TodoClock-0.1.2.zip`，将其中 `todoclock` 文件夹复制到 Kindle 的 `extensions`，使路径为：
+解压 `TodoClock-0.1.3.zip`，将其中 `todoclock` 文件夹复制到 Kindle 的 `extensions`，使路径为：
 
 ```text
 /mnt/us/extensions/todoclock/config.xml
@@ -194,3 +194,18 @@ python3 /tmp/todoclock-runtime/guardian.py restore /tmp/todoclock-runtime
 来源：https://dev.qweather.com/docs/configuration/api-host/
 
 退出插件后合并覆盖新版安装包，保留 config/local.json、config/secrets.json、state 和字体，再启动测试天气。此修复已验证本地校验；真实服务认证和网络连接仍需真机测试。
+
+
+## 0.1.3 升级与回测
+
+先退出当前插件或运行 KUAL Stop/restore，再把 TodoClock-0.1.3.zip 中的 todoclock 文件夹合并覆盖到原位置。保留 config/local.json、config/secrets.json、state 和自行添加的字体；不需要重新登录或校准。下述新行为取代前文 0.1.1 的 180 毫秒等待和必须有 present 的规则。
+
+- 松开按钮立即执行，反馈约 80 毫秒，刷新期间仍接收下一次点击。墨水屏可能合并连续操作的画面，不承诺每次都单独闪烁。切换到新页面时，以新页面显示完成后的命中区为准。
+- 天气展开逐小时预报后，右实体键下一页、左实体键上一页，横屏每页四张卡片，竖屏两行两列。加减号和天气图标不依赖字体字形。
+- 顶部大号时钟；天气放大文字与线条图标；页脚 QWeather 可查看数据时间、错误和来源地址。
+- KOA1 封皮没有 present 时，使用本次有效 status 与 capacity 判断。Full、100 显示封皮 100%，不显示正在充电。单次无数据立即清除旧百分比；两次一秒采样均无数据后隐藏；权限错误或单项缺失显示未知。
+- 诊断的 power_sources 现为每个字段的 value/read 对象，cover_evidence 表示判断依据。missing 表示文件缺失，no_data 表示设备报告无数据，permission 表示无权读取，io_error 表示其他 I/O 失败，unrecognized 表示未识别值。未识别原文不进入报告。
+
+建议回测：秒数加号快速点十次再减十次；天气右键连按后左键返回；封皮装上、拔下、再装上；USB 接通与拔下（分别带封皮和不带封皮）。不要通过延长按压来等待反馈。记录每次屏幕反应，以及诊断 battery/power_sources 两段。驱动上报和墨水屏完成刷新可能晚于一秒采样间隔。
+
+已验证电脑仿真与用户提供数据的回归用例；新版真机连续点击、实际封皮插拔、USB 判断、远距离可读性仍需确认。若拔下后仍未知，提供新诊断的读取分类即可，不需发送账户配置。

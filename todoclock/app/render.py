@@ -8,6 +8,8 @@ from .device import dimensions
 from .microsoft import due_date
 from .timers import format_seconds
 from .weather import CHINA
+from .icons import draw_icon, weather_kind
+from .layout import HOURS_PER_PAGE, hour_page
 
 PAGES = [('todo', '待办'), ('calendar', '日历'), ('weather', '天气'), ('timer', '计时'), ('settings', '设置')]
 
@@ -78,7 +80,12 @@ class Canvas:
 
     def button(self, box, label, action, selected=False, size=27):
         self.draw.rectangle(box, fill=0 if selected else 255, outline=0, width=2)
-        if label in ('‹', '›'):
+        if label in ('−', '-', '+'):
+            x, y = (box[0]+box[2])/2, (box[1]+box[3])/2
+            self.draw.line((x-13, y, x+13, y), fill=255 if selected else 0, width=4)
+            if label == '+':
+                self.draw.line((x, y-13, x, y+13), fill=255 if selected else 0, width=4)
+        elif label in ('‹', '›'):
             x, y = (box[0]+box[2])/2, (box[1]+box[3])/2
             sign = 1 if label == '›' else -1
             self.draw.line([(x-sign*7, y-12), (x+sign*7, y), (x-sign*7, y+12)],
@@ -96,31 +103,36 @@ def render(app, path):
     c = Canvas((w, h), path)
     content_x, right = 192, w - 28
     width = right - content_x
-    c.text((28, 15), app.now.strftime('%H:%M'), 64)
+    c.text((24, -4), app.now.strftime('%H:%M'), 120)
     date = app.now.strftime('%Y.%m.%d') + '  周' + '一二三四五六日'[app.now.weekday()]
-    c.text((250, 27), date, 30)
     current = app.weather_view['current']
-    c.text((w-440, 24), app.place['name'] + '  ' + number(current['temp'], current['temp_unit']), 29)
-    c.lines((w-440, 67), current['text'] + ' · 和风天气', 400, 22, 1)
     battery = '本体 ' + number(app.status.get('battery'), '%') + (' 充电' if app.status.get('charging') else '')
-    if app.status.get('external_power') and not app.status.get('charging'):
-        battery += ' 已接电'
+    if app.status.get('external_power'):
+        battery += ' 接电'
     if app.status.get('cover_present'):
         battery += ' / 封皮 ' + number(app.status.get('cover'), '%') + (' 充电' if app.status.get('cover_charging') else '')
     elif app.status.get('cover_present') is None:
         battery += ' / 封皮 未知'
-    c.text((28, 88), 'Wi-Fi ' + app.status.get('wifi', '未知') + '   ' + battery, 22)
+    summary = app.place['name'] + '  ' + number(current['temp'], current['temp_unit']) + '  ' + current['text']
+    landscape = w > h
+    sx, available = 422, w-450
+    c.text((sx, 12), date, 30)
+    c.lines((sx, 54), battery, available, 23, 1)
+    c.lines((sx, 87), 'Wi-Fi ' + app.status.get('wifi', '未知'), available, 22, 1)
+    if landscape:
+        c.lines((w-410, 12), summary, 382, 26, 1)
+    else:
+        c.lines((sx+235, 90), summary, available-235, 19, 1)
     def stale(name, fetched):
         interval = app.config[name+'_minutes'] or 30
         cache_error = app.weather_view['errors'] if name == 'weather' else any(entry.get('error') for entry in app.todo.get('lists', []))
         return ' [过期/失败]' if name in app.errors or cache_error or (app.now.timestamp()-fetched > interval*60) else ''
-    c.text((28, 121), '待办 ' + timestamp(app.todo.get('synced', 0)) + stale('todo', app.todo.get('synced', 0)) + '    天气 ' + timestamp(app.weather_view['fetched']) + stale('weather', app.weather_view['fetched']), 20)
+    c.lines((sx, 123), '待办 ' + timestamp(app.todo.get('synced', 0)) + stale('todo', app.todo.get('synced', 0)) + '   天气 ' + timestamp(app.weather_view['fetched']) + stale('weather', app.weather_view['fetched']), available, 18, 1)
     c.draw.line((24, 157, w-24, 157), fill=0, width=3)
     for i, (key, label) in enumerate(PAGES):
         y = 195 + i * 122
         c.button((24, y, 151, y+88), label, ('page', key), app.page == key, 31)
-    c.text((28, h-100), 'TODO', 22)
-    c.text((28, h-70), 'CLOCK', 22)
+    c.button((24, h-83, 163, h-28), 'QWeather', ('weather_info',), size=22)
     c.lines((content_x, h-55), app.notice + ('  · 同步中' if app.jobs else ''), width, 20, 1)
     if app.page == 'todo':
         c.lines((content_x, 181), app.views[app.list_index][1], width-380, 38, 1)
@@ -136,11 +148,11 @@ def render(app, path):
         for row, (list_id, task) in enumerate(app.tasks[page*capacity:(page+1)*capacity]):
             index, y = page*capacity+row, 275+row*112
             pending = next((q for q in app.outbox if q['list_id'] == list_id and q['task_id'] == task['id']), None)
-            c.button((content_x, y+10, content_x+58, y+68), '!' if pending and pending['state'] == 'conflict' else '·' if pending else '', ('detail', index) if pending else ('complete', index), size=35)
+            c.button((content_x, y+10, content_x+58, y+68), '!' if pending and pending['state'] == 'conflict' else '·' if pending else '', ('detail', list_id, task['id']) if pending else ('complete', list_id, task['id']), size=35)
             c.lines((content_x+85, y), task.get('title', ''), width-105, 29, 2)
             label = pending.get('error', '待同步') if pending else due_date(task)
             c.lines((content_x+85, y+77), label, width-110, 19, 1)
-            c.hits.append(((content_x+75, y, right, y+105), ('detail', index)))
+            c.hits.append(((content_x+75, y, right, y+105), ('detail', list_id, task['id'])))
             c.draw.line((content_x+80, y+107, right, y+107), fill=180)
         c.button((content_x, h-135, content_x+150, h-75), '上一页', ('task_page', -1))
         c.text((content_x+180, h-123), '{}/{}'.format(page+1, pages), 26)
@@ -171,40 +183,59 @@ def render(app, path):
                     c.draw.line((x+20, y+68, x+70, y+68), fill=255 if selected else 0, width=4)
                 c.hits.append((box, ('date', iso)))
     elif app.page == 'weather':
-        c.text((content_x, 183), app.place['name'], 38)
-        c.button((right-465, 180, right-340, 240), '数据', ('weather_info',))
+        c.text((content_x, 178), app.place['name'], 38)
         c.button((right-325, 180, right-170, 240), '逐小时', ('hours',))
         c.button((right-155, 180, right, 240), '更新', ('weather_sync',))
-        c.text((content_x, 265), number(current['temp'], current['temp_unit']), 88)
-        c.text((content_x+320, 290), current['text'], 35)
-        c.text((content_x, 385), '最低 {}° / 最高 {}°    体感 {}°'.format(number(app.weather_view['min']), number(app.weather_view['max']), number(current['feels'])), 28)
-        c.text((content_x, 435), '湿度 {}    风速 {}'.format(number(current['humidity'], '%'), number(current['wind'], ' '+current['wind_unit'])), 26)
+        draw_icon(c.image, (content_x+12, 270), weather_kind(current['code']), 160)
+        temperature = number(current['temp'], current['temp_unit'])
+        temp_size = 128
+        while font(path, temp_size).getlength(temperature) > width-220 and temp_size > 70:
+            temp_size -= 2
+        c.text((content_x+210, 243), temperature, temp_size)
+        c.lines((content_x+215, 395), current['text'], width-225, 40, 1)
+        c.draw.line((content_x, 464, right, 464), fill=0, width=2)
+        metrics = [
+            ('temperature', '最低 / 最高', '{}° / {}°'.format(number(app.weather_view['min']), number(app.weather_view['max']))),
+            ('temperature', '体感温度', number(current['feels'], '°')),
+            ('humidity', '湿度', number(current['humidity'], '%')),
+            ('wind', '风速', number(current['wind'], ' '+current['wind_unit']))]
+        metric_w = width/4
+        for i, (symbol, label, value) in enumerate(metrics):
+            x = content_x+i*metric_w
+            draw_icon(c.image, (x+4, 482), symbol, 38)
+            c.text((x+49, 484), label, 24 if landscape else 21)
+            c.lines((x+8, 529), value, metric_w-16, 34 if landscape else 30, 1)
         expanded = app.show_hours if app.show_hours is not None else app.weather_view['rain']
         if expanded:
-            capacity = max(1, (h-680)//58)
             hours = app.weather_view['hours']
-            pages = max(1, (len(hours)+capacity-1)//capacity)
-            page = min(app.weather_page, pages-1)
-            for i, item in enumerate(hours[page*capacity:(page+1)*capacity]):
+            page, pages = hour_page(app.weather_page, len(hours))
+            columns, rows = (4, 1) if landscape else (2, 2)
+            gap, top, bottom = 16, 608, h-172
+            cw, ch = (width-gap*(columns-1))/columns, (bottom-top-gap*(rows-1))/rows
+            for i, item in enumerate(hours[page*HOURS_PER_PAGE:(page+1)*HOURS_PER_PAGE]):
+                x = content_x+(i % columns)*(cw+gap)
+                y = top+(i // columns)*(ch+gap)
+                c.draw.rounded_rectangle((x, y, x+cw, y+ch), radius=10, outline=0, width=2)
                 try:
-                    label = datetime.fromisoformat(item['time'].replace('Z', '+00:00')).astimezone(CHINA).strftime('%m-%d %H:%M')
-                except ValueError:
+                    dt = datetime.fromisoformat(item['time'].replace('Z', '+00:00')).astimezone(CHINA)
+                    label = dt.strftime('%H:%M')
+                    if dt.date() != app.now.date(): label = dt.strftime('%m/%d %H:%M')
+                except (ValueError, TypeError):
                     label = '时间未知'
-                y = 502+i*58
-                c.text((content_x, y), label, 25)
-                c.text((content_x+230, y), item['text'], 25)
-                c.text((content_x+430, y), number(item['temp'], '°'), 25)
-                c.text((content_x+570, y), '降水 '+number(item['pop'], '%'), 25)
+                c.text((x+18, y+12), label, 32)
+                draw_icon(c.image, (x+18, y+62), weather_kind(item['code']), 78)
+                c.lines((x+108, y+78), number(item['temp'], '°'), cw-118, 42, 1)
+                c.lines((x+18, y+151), item['text'], cw-36, 32, 1)
+                draw_icon(c.image, (x+16, y+ch-68), 'humidity', 32)
+                c.text((x+57, y+ch-65), '降水 '+number(item['pop'], '%'), 28)
             if not hours:
-                c.text((content_x, 520), '暂无逐小时数据', 28)
-            c.button((content_x, h-170, content_x+120, h-115), '上一页', ('weather_page', -1), size=23)
-            c.text((content_x+150, h-160), '{}/{}'.format(page+1, pages), 23)
-            c.button((content_x+260, h-170, content_x+380, h-115), '下一页', ('weather_page', 1), size=23)
+                c.text((content_x+20, top+60), '暂无逐小时数据', 36)
+            c.button((content_x, h-144, content_x+150, h-79), '上一页', ('weather_page', -1), size=28)
+            c.text((content_x+180, h-132), '{}/{}'.format(page+1, pages), 28)
+            c.button((right-150, h-144, right, h-79), '下一页', ('weather_page', 1), size=28)
         else:
-            c.text((content_x, 535), '今日暂无明显降雨提示', 30)
-        source = '和风天气 QWeather · 获取 ' + timestamp(app.weather_view['fetched'])
-        c.lines((content_x, h-108), source, width, 18, 1)
-        c.lines((content_x, h-82), ' '.join(app.weather_view['attributions']), width, 15, 1)
+            c.text((content_x+20, 660), '今日暂无明显降雨提示', 38)
+            c.text((content_x+20, 723), '点击“逐小时”查看未来时段预报', 30)
     elif app.page == 'timer':
         c.button((content_x, 185, content_x+210, 250), '番茄钟', ('timer_tab', 'countdown'), app.timer_tab == 'countdown')
         c.button((content_x+230, 185, content_x+440, 250), '秒表', ('timer_tab', 'stopwatch'), app.timer_tab == 'stopwatch')

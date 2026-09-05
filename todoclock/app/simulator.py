@@ -2,10 +2,10 @@ from datetime import timedelta
 from pathlib import Path
 from .controller import Controller
 from .device import SimDevice
-from .render import font_path, hit_test, render
+from .render import font_path, render
 from .storage import Store
 from .scratch import scratch
-from .interaction import Feedback
+from .interaction import Feedback, context
 
 
 def make_demo(root, state):
@@ -68,7 +68,12 @@ def simulate(root):
     for label, callback in [('断网 / 联网', offline), ('封皮插拔', cover), ('电量 / 充电', battery), ('日期 +1 天', advance), ('导出 PNG', save)]:
         tk.Button(toolbar, text=label, command=callback).pack(side='left')
     def click(event, kind):
-        feedback.event(kind, (event.x/state['scale'], event.y/state['scale']), state['hits'], app.revision)
+        if state.get('context') == context(app):
+            action = feedback.event(kind, (event.x/state['scale'], event.y/state['scale']), state['hits'], context(app))
+            if action:
+                app.action(action)
+        else:
+            feedback.clear()
     screen.bind('<ButtonPress-1>', lambda event: click(event, 'press'))
     screen.bind('<ButtonRelease-1>', lambda event: click(event, 'tap'))
     window.bind('<Left>', lambda _: app.key(-1))
@@ -82,16 +87,14 @@ def simulate(root):
             close()
             return
         app.tick()
-        action = feedback.take(app.revision)
-        if action:
-            app.action(action)
+        feedback.expire(context(app))
         image, state['hits'] = render(app, path)
+        state['context'] = context(app)
         image = feedback.paint(image)
         state['scale'] = min(0.72, (window.winfo_screenheight()-160)/image.height, (window.winfo_screenwidth()-80)/image.width)
         size = tuple(int(v*state['scale']) for v in image.size)
         state['image'] = ImageTk.PhotoImage(image.resize(size))
         screen.configure(image=state['image'])
-        feedback.shown()
         window.after(50, update)
     update()
     window.mainloop()
