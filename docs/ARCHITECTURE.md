@@ -55,3 +55,10 @@ Display 独占 Kindle.show，提交时复制图像、配置和命中区。条件
 power.sample 提供单次读取结果和 cover_evidence；Kindle.power_status 在每秒采样时用 CoverTracker 解释连续无数据。后台 Wi-Fi 查询不能改变计数或覆盖当前电量。live_gauge 是依据 KOA1 实测推断在位，不代表所有固件都提供明确硬件连接信号。诊断只输出允许的字段值及读取分类。
 
 天气每页容量统一为 layout.HOURS_PER_PAGE=4。icons 是原创 Pillow 线条绘图；天气代码映射参考 https://dev.qweather.com/docs/api/weather/weather-conditions/ ，未知代码保留天气文字并使用中性图标。页脚来源入口打开本地数据详情，不启动浏览器。
+
+
+## 0.1.4 顶部状态与验收职责
+
+statusbar 提供纯展示逻辑：本体充电文案去重、两项同步是否完整且新鲜。Controller 缓存天气三个接口最早的成功时间，renderer 不读取文件；页码按钮和实体键共享 settings_page 状态。full_refresh 仅请求现有显示线程全刷，沿用有界队列与 force 保留机制。
+
+开发检查保留确定性单元测试、静态检查和打包校验。自 0.1.4 起仿真及视觉验收由用户负责，simulate/preview/Tk 工具继续保留，修改项目后不自动执行。

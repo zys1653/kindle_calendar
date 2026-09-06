@@ -66,7 +66,9 @@ class Controller:
     def refresh_cache(self):
         self.todo = self.store.read('todo.json', {'lists': [], 'tasks': {}})
         self.outbox = self.store.read('outbox.json', [])
-        self.weather_view = view(self.weather.cached(self.place), self.now.date().isoformat())
+        weather_cache = self.weather.cached(self.place)
+        self.weather_view = view(weather_cache, self.now.date().isoformat())
+        self.weather_synced = min(weather_cache.get(part, {}).get('fetched', 0) for part in ('current', 'daily', 'hourly'))
         self.views = task_views(self.todo)
         self.list_index %= len(self.views)
         self.tasks = tasks_for(self.todo, self.views[self.list_index][0])
@@ -216,6 +218,8 @@ class Controller:
             self.refresh_cache()
         elif self.page == 'calendar':
             self.move_month(delta)
+        elif self.page == 'settings':
+            self.settings_page = max(0, min(1, self.settings_page + delta))
         elif self.page == 'weather' and (self.show_hours if self.show_hours is not None else self.weather_view['rain']):
             self.weather_page = hour_page(self.weather_page + delta, len(self.weather_view['hours']))[0]
 
@@ -334,7 +338,9 @@ class Controller:
             self.save_preferences()
             self.next_due[key.replace('_minutes', '')] = 0
         elif name == 'settings_page':
-            self.settings_page = 1 - self.settings_page
+            self.settings_page = max(0, min(1, int(args[0])))
+        elif name == 'full_refresh':
+            self.force_refresh = True
         elif name == 'rotate':
             self.rotation_pending = (self.config['rotation'], time.monotonic() + 15)
             self.config['rotation'] = (self.config['rotation'] + 90) % 360

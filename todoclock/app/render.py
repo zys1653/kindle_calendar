@@ -10,6 +10,7 @@ from .timers import format_seconds
 from .weather import CHINA
 from .icons import draw_icon, weather_kind
 from .layout import HOURS_PER_PAGE, hour_page
+from .statusbar import body_battery, sync_ready
 
 PAGES = [('todo', '待办'), ('calendar', '日历'), ('weather', '天气'), ('timer', '计时'), ('settings', '设置')]
 
@@ -106,33 +107,43 @@ def render(app, path):
     c.text((24, -4), app.now.strftime('%H:%M'), 120)
     date = app.now.strftime('%Y.%m.%d') + '  周' + '一二三四五六日'[app.now.weekday()]
     current = app.weather_view['current']
-    battery = '本体 ' + number(app.status.get('battery'), '%') + (' 充电' if app.status.get('charging') else '')
-    if app.status.get('external_power'):
-        battery += ' 接电'
+    battery = body_battery(app.status)
     if app.status.get('cover_present'):
         battery += ' / 封皮 ' + number(app.status.get('cover'), '%') + (' 充电' if app.status.get('cover_charging') else '')
     elif app.status.get('cover_present') is None:
         battery += ' / 封皮 未知'
-    summary = app.place['name'] + '  ' + number(current['temp'], current['temp_unit']) + '  ' + current['text']
     landscape = w > h
-    sx, available = 422, w-450
-    c.text((sx, 12), date, 30)
-    c.lines((sx, 54), battery, available, 23, 1)
-    c.lines((sx, 87), 'Wi-Fi ' + app.status.get('wifi', '未知'), available, 22, 1)
-    if landscape:
-        c.lines((w-410, 12), summary, 382, 26, 1)
+    wx, sx = (385, 815) if landscape else (355, 670)
+    weather_width, available = sx-wx-24, w-sx-28
+    c.lines((wx+8, 9), app.place['name'], weather_width-16, 25, 1)
+    draw_icon(c.image, (wx, 44), weather_kind(current['code']), 76)
+    temperature = number(current['temp'], current['temp_unit'])
+    temp_size = 64 if landscape else 52
+    while font(path, temp_size).getlength(temperature) > weather_width-86 and temp_size > 28:
+        temp_size -= 2
+    c.text((wx+88, 38), temperature, temp_size)
+    c.lines((wx+8, 119), current['text'], weather_width-16, 25, 1)
+    c.draw.line((sx-18, 15, sx-18, 143), fill=175, width=1)
+    c.text((sx, 8), date, 26 if landscape else 23)
+    c.lines((sx, 42), battery, available, 22 if landscape else 19, 1)
+    c.lines((sx, 73), 'Wi-Fi ' + app.status.get('wifi', '未知'), available, 20, 1)
+    ready = sync_ready(app)
+    c.lines((sx, 101), '待办 ' + timestamp(app.todo.get('synced', 0)), available-52, 18, 1)
+    c.lines((sx, 127), '天气 ' + timestamp(app.weather_synced), available-52, 18, 1)
+    # Draw status marks directly so a missing font glyph cannot hide the result.
+    ix, iy = w-49, 124
+    c.draw.ellipse((ix-18, iy-18, ix+18, iy+18), outline=0, width=2)
+    if ready:
+        c.draw.line(((ix-10, iy), (ix-3, iy+7), (ix+10, iy-8)), fill=0, width=4)
     else:
-        c.lines((sx+235, 90), summary, available-235, 19, 1)
-    def stale(name, fetched):
-        interval = app.config[name+'_minutes'] or 30
-        cache_error = app.weather_view['errors'] if name == 'weather' else any(entry.get('error') for entry in app.todo.get('lists', []))
-        return ' [过期/失败]' if name in app.errors or cache_error or (app.now.timestamp()-fetched > interval*60) else ''
-    c.lines((sx, 123), '待办 ' + timestamp(app.todo.get('synced', 0)) + stale('todo', app.todo.get('synced', 0)) + '   天气 ' + timestamp(app.weather_view['fetched']) + stale('weather', app.weather_view['fetched']), available, 18, 1)
+        c.draw.line((ix, iy-10, ix, iy+3), fill=0, width=4)
+        c.draw.ellipse((ix-2, iy+9, ix+2, iy+13), fill=0)
     c.draw.line((24, 157, w-24, 157), fill=0, width=3)
     for i, (key, label) in enumerate(PAGES):
         y = 195 + i * 122
         c.button((24, y, 151, y+88), label, ('page', key), app.page == key, 31)
-    c.button((24, h-83, 163, h-28), 'QWeather', ('weather_info',), size=22)
+    c.button((24, h-155, 163, h-103), 'QWeather', ('weather_info',), size=22)
+    c.button((24, h-83, 163, h-28), '全刷', ('full_refresh',), size=26)
     c.lines((content_x, h-55), app.notice + ('  · 同步中' if app.jobs else ''), width, 20, 1)
     if app.page == 'todo':
         c.lines((content_x, 181), app.views[app.list_index][1], width-380, 38, 1)
@@ -254,7 +265,10 @@ def render(app, path):
             c.text((content_x+40, 890), '暂停时可调整；切换页面后继续计时。', 24)
     elif app.page == 'settings':
         c.text((content_x, 180), '设置', 38)
-        c.button((right-200, 180, right, 240), '更多 / 返回', ('settings_page',))
+        c.button((right-300, 180, right-235, 240), '‹', ('settings_page', max(0, app.settings_page-1)))
+        c.button((right-220, 180, right-155, 240), '1', ('settings_page', 0), app.settings_page == 0)
+        c.button((right-145, 180, right-80, 240), '2', ('settings_page', 1), app.settings_page == 1)
+        c.button((right-65, 180, right, 240), '›', ('settings_page', min(1, app.settings_page+1)))
         def setting(row, label, buttons):
             y = 280+row*100
             c.text((content_x, y+10), label, 26)

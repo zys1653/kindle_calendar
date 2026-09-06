@@ -1,2 +1,2 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<extension><information><name>TodoClock</name><version>0.1.3</version><author>TodoClock contributors</author><id>todoclock</id></information><menus><menu type="json" dynamic="true">menu.json</menu></menus></extension>
+<extension><information><name>TodoClock</name><version>0.1.4</version><author>TodoClock contributors</author><id>todoclock</id></information><menus><menu type="json" dynamic="true">menu.json</menu></menus></extension>
