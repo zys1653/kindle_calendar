@@ -12,7 +12,11 @@ from .layout import hour_page
 from .weather import CHINA, QWeather, view
 
 
-class Controller:
+from .mail import Mail
+from .mail_controller import MailActions
+
+
+class Controller(MailActions):
     def __init__(self, root, device, store=None, demo=False):
         self.root, self.device, self.demo = Path(root), device, demo
         self.config, self.secrets = configuration(self.root)
@@ -22,7 +26,7 @@ class Controller:
         self.status_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='device-status')
         self.status_future = None
         self.jobs = {}
-        self.next_due = {'weather': 0, 'todo': 0, 'flush': 0}
+        self.next_due = {'weather': 0, 'todo': 0, 'flush': 0, 'mail': 0}
         self.errors, self.failures = {}, {}
         self.page, self.list_index, self.task_page = 'todo', 0, 0
         self.weather_page, self.show_hours = 0, None
@@ -47,6 +51,7 @@ class Controller:
         self.last_power = 0
         self.debug_until = 0
         self.status = device.status()
+        self.mail_init()
         self.build_services()
         self.refresh_cache()
 
@@ -58,6 +63,11 @@ class Controller:
         else:
             self.microsoft = Microsoft(self.config['microsoft']['client_id'], self.store)
             self.weather = QWeather(self.secrets.get('qweather', {}), self.store)
+        if self.demo:
+            from .demo import DemoMail
+            self.mail = DemoMail(self.microsoft, self.store)
+        else:
+            self.mail = Mail(self.microsoft, self.store)
 
     @property
     def place(self):
@@ -69,13 +79,14 @@ class Controller:
         weather_cache = self.weather.cached(self.place)
         self.weather_view = view(weather_cache, self.now.date().isoformat())
         self.weather_synced = min(weather_cache.get(part, {}).get('fetched', 0) for part in ('current', 'daily', 'hourly'))
+        self.mail_snapshot()
         self.views = task_views(self.todo)
         self.list_index %= len(self.views)
         self.tasks = tasks_for(self.todo, self.views[self.list_index][0])
         self.revision += 1
 
     def save_preferences(self):
-        keys = ('rotation', 'location', 'todo_minutes', 'weather_minutes', 'full_refresh_minutes')
+        keys = ('rotation', 'location', 'todo_minutes', 'weather_minutes', 'full_refresh_minutes', 'mail_minutes')
         preferences = {k: self.config[k] for k in keys}
         if self.rotation_pending:
             preferences['rotation'] = self.rotation_pending[0]
@@ -168,7 +179,8 @@ class Controller:
                         self.login['next_poll'] = mono + self.login.get('interval', 5)
                 elif name in ('weather', 'todo'):
                     self.notice = ('天气' if name == 'weather' else '待办') + '更新成功'
-                self.next_due[name] = mono if name.startswith('login') else mono + (self.config.get(name + '_minutes', 1) * 60 or 86400)
+                self.mail_finished(name, result)
+                self.next_due[name] = mono if name.startswith('login') else (mono if name in ('mail_more', 'mail_body', 'mail_flush') else mono + (self.config.get(name + '_minutes', 1) * 60 or 86400))
                 self.logger.info('job_success %s', name)
             except Exception as exc:
                 safe = exc.diagnostic() if isinstance(exc, ServiceError) else '内部错误，请查看诊断'
@@ -185,6 +197,7 @@ class Controller:
                     self.modal = ('登录失败', safe, [])
             self.refresh_cache()
         online = self.status.get('wifi_on') is not False
+        self.mail_tick(online)
         if online:
             for name in ('weather', 'todo'):
                 if self.config[name + '_minutes'] and mono >= self.next_due[name]:
@@ -193,12 +206,15 @@ class Controller:
                 self.submit('flush', self.microsoft.flush)
             if self.login and not self.exiting:
                 if mono >= self.login['deadline']:
+                    if not self.demo:
+                        self.microsoft.cancel_login()
                     self.login = None
                     self.modal = ('登录过期', '请重新开始登录。', [])
                     self.revision += 1
                 elif mono >= self.login['next_poll']:
                     code = self.login['device_code']
-                    self.submit('login_poll', lambda: self.microsoft.poll_login(code))
+                    mail_login = self.mail_login
+                    self.submit('login_poll', lambda: self.microsoft.poll_login(code, mail=True) if mail_login else self.microsoft.poll_login(code))
         if mono - self.last_save > 15 and (self.countdown.started is not None or self.stopwatch.started is not None):
             self.save_timers()
 
@@ -218,8 +234,10 @@ class Controller:
             self.refresh_cache()
         elif self.page == 'calendar':
             self.move_month(delta)
+        elif self.page == 'mail':
+            self.mail_move(delta)
         elif self.page == 'settings':
-            self.settings_page = max(0, min(1, self.settings_page + delta))
+            self.settings_page = max(0, min(2, self.settings_page + delta))
         elif self.page == 'weather' and (self.show_hours if self.show_hours is not None else self.weather_view['rain']):
             self.weather_page = hour_page(self.weather_page + delta, len(self.weather_view['hours']))[0]
 
@@ -234,9 +252,15 @@ class Controller:
             self.logger.warning('action_failed %s %s', name, type(exc).__name__)
 
     def _action(self, name, args):
-        if name == 'page':
+        if name.startswith('mail_'):
+            self.mail_action(name, args)
+        elif name == 'page':
             self.page, self.modal = args[0], None
         elif name == 'close':
+            if self.login:
+                if not self.demo:
+                    self.microsoft.cancel_login()
+                self.login = None
             self.modal = None
             self.modal_page = 0
         elif name == 'modal_page':
@@ -333,12 +357,12 @@ class Controller:
             self.status = self.device.status()
         elif name == 'frequency':
             key = args[0]
-            values = (5, 15, 30, 60) if key == 'full_refresh_minutes' else (0, 15, 30, 60, 120)
+            values = (5, 15, 30, 60) if key == 'full_refresh_minutes' else ((0, 5, 15, 30, 60, 120) if key == 'mail_minutes' else (0, 15, 30, 60, 120))
             self.config[key] = values[(values.index(self.config[key]) + 1) % len(values)]
             self.save_preferences()
             self.next_due[key.replace('_minutes', '')] = 0
         elif name == 'settings_page':
-            self.settings_page = max(0, min(1, int(args[0])))
+            self.settings_page = max(0, min(2, int(args[0])))
         elif name == 'full_refresh':
             self.force_refresh = True
         elif name == 'rotate':
@@ -362,6 +386,7 @@ class Controller:
             self.refresh_cache()
             self.notice = '配置已重新加载'
         elif name == 'login':
+            self.mail_login = False
             if self.store.read('token.json', {}) or self.store.read('outbox.json', []):
                 self.notice = '请先注销旧账户，避免混用账户数据'
             elif not self.login and 'login_begin' not in self.jobs and 'login_poll' not in self.jobs:
@@ -375,12 +400,14 @@ class Controller:
             self.modal = None
             self.refresh_cache()
         elif name == 'logout':
-            self.modal = ('注销微软账户', '将清除本机令牌、待办缓存和未提交操作，不影响远端任务。', [('确认注销', ('logout_confirm',))])
+            self.modal = ('注销微软账户', '将清除本机令牌、待办和邮箱缓存及全部未提交操作（包括已读队列）。请先联网提交需要保留的操作；不修改远端数据。', [('确认注销', ('logout_confirm',))])
         elif name == 'logout_confirm':
             if self.jobs:
                 self.notice = '请等待当前网络任务结束后注销'
                 return
             self.login = None
+            self.mail.clear()
+            self.mail_detail, self.mail_request = None, None
             for filename, empty in [('token.json', {}), ('todo.json', {'lists': [], 'tasks': {}}), ('outbox.json', [])]:
                 self.store.write(filename, empty)
             self.modal = None
@@ -406,6 +433,8 @@ class Controller:
     def close(self):
         self.exiting = True
         self.login = None
+        if not self.demo:
+            self.microsoft.cancel_login()
         self.save_timers()
         self.worker.shutdown(wait=False, cancel_futures=True)
         self.status_worker.shutdown(wait=False, cancel_futures=True)

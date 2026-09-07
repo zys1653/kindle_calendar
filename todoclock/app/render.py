@@ -12,7 +12,7 @@ from .icons import draw_icon, weather_kind
 from .layout import HOURS_PER_PAGE, hour_page
 from .statusbar import body_battery, sync_ready
 
-PAGES = [('todo', '待办'), ('calendar', '日历'), ('weather', '天气'), ('timer', '计时'), ('settings', '设置')]
+PAGES = [('todo', '待办'), ('mail', '邮箱'), ('calendar', '日历'), ('weather', '天气'), ('timer', '计时'), ('settings', '设置')]
 
 
 def font_path(root, configured, desktop=False):
@@ -140,7 +140,7 @@ def render(app, path):
         c.draw.ellipse((ix-2, iy+9, ix+2, iy+13), fill=0)
     c.draw.line((24, 157, w-24, 157), fill=0, width=3)
     for i, (key, label) in enumerate(PAGES):
-        y = 195 + i * 122
+        y = 195 + i * min(122, (h-380)//6)
         c.button((24, y, 151, y+88), label, ('page', key), app.page == key, 31)
     c.button((24, h-155, 163, h-103), 'QWeather', ('weather_info',), size=22)
     c.button((24, h-83, 163, h-28), '全刷', ('full_refresh',), size=26)
@@ -168,6 +168,9 @@ def render(app, path):
         c.button((content_x, h-135, content_x+150, h-75), '上一页', ('task_page', -1))
         c.text((content_x+180, h-123), '{}/{}'.format(page+1, pages), 26)
         c.button((right-150, h-135, right, h-75), '下一页', ('task_page', 1))
+    elif app.page == 'mail':
+        from .mail_render import draw_mail
+        draw_mail(c, app, content_x, right, h)
     elif app.page == 'calendar':
         c.text((content_x, 185), '{} 年 {} 月'.format(app.year, app.month), 38)
         c.button((right-330, 180, right-245, 240), '‹', ('month', -1))
@@ -265,10 +268,11 @@ def render(app, path):
             c.text((content_x+40, 890), '暂停时可调整；切换页面后继续计时。', 24)
     elif app.page == 'settings':
         c.text((content_x, 180), '设置', 38)
-        c.button((right-300, 180, right-235, 240), '‹', ('settings_page', max(0, app.settings_page-1)))
-        c.button((right-220, 180, right-155, 240), '1', ('settings_page', 0), app.settings_page == 0)
-        c.button((right-145, 180, right-80, 240), '2', ('settings_page', 1), app.settings_page == 1)
-        c.button((right-65, 180, right, 240), '›', ('settings_page', min(1, app.settings_page+1)))
+        c.button((right-375, 180, right-310, 240), '‹', ('settings_page', max(0, app.settings_page-1)))
+        for index in range(3):
+            left = right-300+index*75
+            c.button((left, 180, left+65, 240), str(index+1), ('settings_page', index), app.settings_page == index)
+        c.button((right-65, 180, right, 240), '›', ('settings_page', min(2, app.settings_page+1)))
         def setting(row, label, buttons):
             y = 280+row*100
             c.text((content_x, y+10), label, 26)
@@ -284,7 +288,7 @@ def render(app, path):
             for row, key, label in [(3, 'todo_minutes', '待办同步'), (4, 'weather_minutes', '天气更新'), (5, 'full_refresh_minutes', '彻底刷新')]:
                 setting(row, label, [(str(app.config[key])+' 分钟' if app.config[key] else '仅手动', ('frequency', key), 190)])
             setting(6, '屏幕方向', [('旋转 90°', ('rotate',), 190)])
-        else:
+        elif app.settings_page == 1:
             setting(0, '微软账户', [('登录', ('login',), 120), ('注销', ('logout',), 120)])
             setting(1, '和风配置', [('重新加载', ('reload',), 160), ('测试连接', ('weather_sync',), 160)])
             setting(2, '配置状态', [('演示配置' if app.demo else ('已填写' if app.secrets.get('qweather', {}).get('api_key') else '未填写 Key'), None, 230)])
@@ -292,6 +296,13 @@ def render(app, path):
             setting(4, '详细日志', [('开启 10 分钟', ('debug',), 230)])
             setting(5, '同步队列', [('查看待提交操作', ('outbox',), 230)])
             setting(6, '返回 Kindle', [('退出插件', ('exit',), 230)])
+        else:
+            setting(0, '微软邮箱', [('补充授权 / 登录', ('mail_login',), 245)])
+            setting(1, '邮箱同步', [('仅手动' if not app.config['mail_minutes'] else str(app.config['mail_minutes'])+' 分钟', ('frequency', 'mail_minutes'), 190)])
+            setting(2, '授权状态', [('已授权' if app.mail_ready else '待授权', None, 190)])
+            setting(3, '立即同步', [('同步邮箱', ('mail_sync',), 190)])
+            setting(4, '已读操作', [('待提交 / 失败 '+str(len(app.mail_queue)), ('mail_queue',), 245)])
+            c.lines((content_x, 810), '邮箱与待办共用账户；注销请前往设置第 2 页。', width, 24, 2)
     if app.modal:
         # Modal captures all touch actions, preventing click-through.
         c.hits.clear()

@@ -26,14 +26,14 @@ def release_files(root=ROOT):
 def build():
     out = ROOT/'dist'
     out.mkdir(exist_ok=True)
-    target = out/'TodoClock-0.1.4.zip'
+    target = out/'TodoClock-0.1.5.zip'
     manifest = {}
     with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for source, name in release_files():
             data = source.read_bytes()
             if source.suffix in ('.py', '.sh', '.md', '.json', '.xml'):
                 data = data.replace(b'\r\n', b'\n')
-            info = zipfile.ZipInfo(name, (2026, 9, 5, 0, 0, 0))
+            info = zipfile.ZipInfo(name, (2026, 9, 6, 0, 0, 0))
             info.create_system = 3
             info.external_attr = (0o100755 if source.suffix == '.sh' else 0o100644) << 16
             info.compress_type = zipfile.ZIP_DEFLATED

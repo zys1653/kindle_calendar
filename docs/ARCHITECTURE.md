@@ -62,3 +62,16 @@ power.sample 提供单次读取结果和 cover_evidence；Kindle.power_status �
 statusbar 提供纯展示逻辑：本体充电文案去重、两项同步是否完整且新鲜。Controller 缓存天气三个接口最早的成功时间，renderer 不读取文件；页码按钮和实体键共享 settings_page 状态。full_refresh 仅请求现有显示线程全刷，沿用有界队列与 force 保留机制。
 
 开发检查保留确定性单元测试、静态检查和打包校验。自 0.1.4 起仿真及视觉验收由用户负责，simulate/preview/Tk 工具继续保留，修改项目后不自动执行。
+
+
+## 0.1.5 邮箱
+
+`mail.py` 封装 Graph 列表、正文与已读队列；`mail_controller.py` 接入现有串行 worker，`mail_render.py` 只读取主线程快照。`mail_minutes` 是独立配置，缺省 15；第三页设置管理授权与周期。原顶部同步指标仍只有待办和天气。
+
+Mail 接口：`ready / cached(folder) / fetch(folder, more=False) / sync / body(id, fetch=False) / enqueue / flush / cancel / clear`。分类使用固定文件夹名称与 Outlook inferenceClassification；HTTP 请求有超时、关闭重定向、响应大小上限，分页 URL 验证沿用 Graph 官方主机限制。正文是规范化纯文字，渲染器不执行网络或设备 I/O。
+
+邮箱缓存以账户 ID 摘要命名，列表按 30 项写入不可变批次后原子提交索引；进程锁保护读取和批次回收。正文每封独立文件，LRU 索引限制为 100 封，避免每次读取整个正文库。已读队列只存稳定邮件 ID 和安全状态，PATCH 确认后更新缓存；403/404/409/412 转终止失败，其余保留待提交并退避。
+
+授权补充使用设备码流程，请求 Tasks.ReadWrite、Mail.ReadWrite、User.Read、offline_access。旧账户 ID 来自已有已核对记录、旧令牌访问 /me 的结果，或直接从微软获取的旧 JWT 的 oid 身份提示；身份不明时停止升级并说明重新登录步骤。JWT 身份提示不用于批准访问。新令牌以 /me 校验身份和 scope 后一次写入，取消与写入共用锁。注销等待活动任务结束，再清除对应缓存。
+
+文件夹和正文点击携带稳定 ID；分页完成通知同时携带文件夹与视图代次，过期结果不会跳转当前页面。正文异步结果只进入仍在查看的邮件。墨水屏显示线程、设备探测和恢复策略保持原边界。

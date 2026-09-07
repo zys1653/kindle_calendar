@@ -4,7 +4,7 @@ from PIL import ImageChops
 
 
 def context(app):
-    return (app.page, id(app.modal), app.modal_page, app.config['rotation'],
+    return ((app.mail_folder, app.mail_page, (app.mail_detail or {}).get('id'), app.mail_body_page) if app.page == 'mail' else None, app.page, id(app.modal), app.modal_page, app.config['rotation'],
             app.list_index if app.page == 'todo' else None,
             app.task_page if app.page == 'todo' else None,
             app.settings_page if app.page == 'settings' else None,

@@ -45,17 +45,38 @@ class HTTP:
         self.session = session or requests.Session()
 
     def request(self, method, url, **kwargs):
+        max_bytes = kwargs.pop("max_bytes", None)
+        if max_bytes:
+            kwargs["stream"] = True
         try:
             response = self.session.request(method, url, timeout=(8, 20),
                                             allow_redirects=False, **kwargs)
         except requests.RequestException as exc:
             raise connection_error(exc) from None
+        if max_bytes and 200 <= response.status_code < 300:
+            import json
+            chunks, size = [], 0
+            try:
+                for chunk in response.iter_content(16384):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise ServiceError('邮件响应过大，未完整加载，请在 Outlook 阅读')
+                    chunks.append(chunk)
+                return json.loads(b''.join(chunks))
+            except requests.RequestException as exc:
+                raise connection_error(exc) from None
+            except (ValueError, UnicodeError):
+                raise ServiceError('服务返回无效 JSON', kind='INVALID_JSON') from None
+            finally:
+                response.close()
         if not 200 <= response.status_code < 300:
             labels = {400: "请求参数错误", 401: "认证失败，请检查凭据或重新登录",
                       402: "额度不足", 403: "无访问权限", 404: "对象不存在",
                       409: "远端数据冲突", 412: "远端数据已变更", 429: "请求过于频繁"}
             retry = response.headers.get("Retry-After", "60")
             retry = min(86400, max(5, int(retry))) if str(retry).isdigit() else 60
+            if max_bytes:
+                response.close()
             raise ServiceError(labels.get(response.status_code, "服务返回错误"),
                                response.status_code, retry, kind='HTTP_ERROR')
         if response.status_code == 204:

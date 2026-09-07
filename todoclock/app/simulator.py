@@ -25,7 +25,7 @@ def export(root, output):
         try:
             for rotation in (90, 0, 180, 270):
                 app.config['rotation'] = rotation
-                for page in ('todo', 'calendar', 'weather', 'timer', 'settings'):
+                for page in ('todo', 'mail', 'calendar', 'weather', 'timer', 'settings'):
                     app.page = page
                     render(app, path)[0].save(output / '{}-{}.png'.format(page, rotation))
         finally:

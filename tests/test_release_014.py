@@ -65,7 +65,7 @@ class HeaderLogicTests(unittest.TestCase):
         self.assertEqual(app.settings_page, 0)
         app.key(1)
         app.key(1)
-        self.assertEqual(app.settings_page, 1)
+        self.assertEqual(app.settings_page, 2)
         app._action('settings_page', [0])
         self.assertEqual(app.settings_page, 0)
         app._action('settings_page', [1])

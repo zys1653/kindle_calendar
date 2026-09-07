@@ -76,6 +76,8 @@ def configuration(root):
     for key in ("todo_minutes", "weather_minutes"):
         if config[key] not in (0, 15, 30, 60, 120):
             raise ValueError("同步周期无效")
+    if config["mail_minutes"] not in (0, 5, 15, 30, 60, 120):
+        raise ValueError("邮箱同步周期无效")
     if config["full_refresh_minutes"] not in (5, 15, 30, 60):
         raise ValueError("全刷周期无效")
     if config["location"] not in config["locations"]:

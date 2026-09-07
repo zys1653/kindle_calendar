@@ -1,8 +1,8 @@
 # TodoClock
 
-Kindle Oasis 1（第八代）KUAL 信息屏：顶部状态栏、左侧导航、Microsoft To Do、整月日历、和风天气、倒计时/秒表和设备设置。
+Kindle Oasis 1（第八代）KUAL 信息屏：顶部状态栏、左侧导航、Microsoft To Do、Hotmail / Outlook 邮箱、整月日历、和风天气、倒计时/秒表和设备设置。
 
-**版本 0.1.4：自动化单元测试与静态检查由开发者执行；仿真和视觉验收由用户完成，真机效果待验收。** 不会自动连接设备。首次安装先诊断、校准，再启用完整接管。
+**版本 0.1.5：新增邮箱阅读、手动已读与独立同步周期。本次按用户要求额外执行仿真与视觉检查；真实邮箱和真机效果待验收。** 不会自动连接设备。首次安装先诊断、校准，再启用完整接管。
 
 ## 电脑快速预览
 
@@ -13,13 +13,13 @@ python -m pip install -r requirements-dev.txt
 python todoclock/run.py simulate
 ```
 
-仿真使用隔离假数据，鼠标操作屏幕、左右键切列表/月份/逐小时天气；工具栏可模拟断网、封皮插拔、电量/充电和日期推进。临时数据在 `.scratch/`，正常退出清理，不访问微软或和风服务。
+仿真使用隔离假数据，鼠标操作屏幕、左右键切列表/月份/逐小时天气，邮箱中用于翻列表和正文页；工具栏可模拟断网、封皮插拔、电量/充电和日期推进。临时数据在 `.scratch/`，正常退出清理，不访问微软或和风服务。
 
 ```powershell
 python todoclock/run.py preview
 ```
 
-生成 `preview/` 中五个页面、四种方向的 PNG。电脑使用系统字体，Kindle 需自行放入支持中文的 `todoclock/assets/fonts/regular.ttf`。安装包不附带字体文件。
+生成 `preview/` 中六个页面、四种方向的 PNG。电脑使用系统字体，Kindle 需自行放入支持中文的 `todoclock/assets/fonts/regular.ttf`。安装包不附带字体文件。
 
 ## 安装与配置
 
@@ -29,12 +29,13 @@ python todoclock/run.py preview
 - 复制 `config/secrets.example.json` 为 `config/secrets.json`，手动填写和风 API Host、API Key。
 - 复制 `config/local.example.json` 为 `config/local.json`，填写微软 Client ID。
 - 正式使用前通过 KUAL `Diagnostics` 和 `Touch calibration`，再设置 `device.verified=true`。
-- 默认每 30 分钟更新、前光关闭、15 分钟彻底刷新；左侧五页均可触控。
+- 待办和天气默认每 30 分钟更新，邮箱每 15 分钟更新、前光关闭、15 分钟彻底刷新；左侧六页均可触控。
 
 ## 实现边界
 
 - Python 3.9、Pillow、requests、FBInk；不使用浏览器，不需要常开电脑。
 - 待办仅查看与完成；“重要”“计划内”为本地聚合，不显示“我的一天”。断网勾选持久排队，远端冲突不会静默覆盖。
+- 邮箱：设置第 3 页补充授权，与待办共用账户；六个常用分类、按需加载历史邮件、纯文字正文、离线已读队列。不发送或删除邮件。
 - 和风使用 **weather v1**，API Key 放请求头。地点预置天津南开和河北廊坊。
 - 原生系统仅做运行期间的屏保控制、Wi-Fi/前光和 `awesome` 进程暂停/恢复；不写 rootfs，不停 `powerd`，不改开机启动。
 - 不做深度休眠/RTC 唤醒、系统校时、天气预警、农历、新增/编辑待办或声音提醒。
@@ -49,6 +50,8 @@ python tools/check.py
 python tools/package.py
 ```
 
-产物：`dist/TodoClock-0.1.4.zip`、对应 SHA256 文件。打包脚本仅包含明确列出的代码、示例配置和文档，不包含本地配置、令牌、待办、日志或设备恢复记录。
+产物：`dist/TodoClock-0.1.5.zip`、对应 SHA256 文件。打包脚本仅包含明确列出的代码、示例配置和文档，不包含本地配置、令牌、待办、日志或设备恢复记录。
 
 从 0.1.4 起，修改后不自动运行仿真、Tk 冒烟或导出预览。仿真工具继续保留，用户可自行运行 preview、simulate、tools/ui_smoke.py、tools/visual_checks.py 进行验收；旧 preview 文件不代表新版界面。确定性单元测试（包括纯渲染断言）、静态检查、打包校验和 Git 提交照常执行。
+
+0.1.5 的本次例外不改变上述长期职责。邮箱专项验收可显式运行 `python tools/mail_ui_smoke.py` 和 `python tools/mail_acceptance.py`；均使用隔离假数据，后者输出 `preview/0.1.5-mail/`。
