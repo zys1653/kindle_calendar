@@ -72,7 +72,7 @@ def draw_mail(c, app, x, right, h):
         if not items:
             c.text((x+25, top+70), '本批暂无邮件，请继续翻页' if cache.get('next') else '暂无邮件' if cache.get('synced') else '尚未获取邮件', 34)
             if not app.mail_ready:
-                c.button((x+25, top+135, x+305, top+200), '授权微软邮箱', ('mail_login',))
+                c.button((x+25, top+135, x+305, top+200), '登录微软账户', ('login',))
         for i, item in enumerate(items[page*app.mail_capacity:(page+1)*app.mail_capacity]):
             y = top+i*row_h
             unread = not item.get('isRead', False)

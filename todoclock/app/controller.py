@@ -16,7 +16,10 @@ from .mail import Mail
 from .mail_controller import MailActions
 
 
-class Controller(MailActions):
+from .queue_controller import QueueActions
+
+
+class Controller(MailActions, QueueActions):
     def __init__(self, root, device, store=None, demo=False):
         self.root, self.device, self.demo = Path(root), device, demo
         self.config, self.secrets = configuration(self.root)
@@ -83,6 +86,8 @@ class Controller(MailActions):
         self.views = task_views(self.todo)
         self.list_index %= len(self.views)
         self.tasks = tasks_for(self.todo, self.views[self.list_index][0])
+        if self.modal and self.modal[0] == '等待同步':
+            self.show_queue()
         self.revision += 1
 
     def save_preferences(self):
@@ -172,7 +177,12 @@ class Controller(MailActions):
                     if result == 'success':
                         self.login, self.modal = None, None
                         self.notice = '微软登录成功'
-                        self.next_due['todo'] = 0
+                        for service in ('todo', 'mail', 'flush', 'mail_flush'):
+                            self.errors.pop(service, None)
+                            self.next_due[service] = 0
+                        self.mail_snapshot()
+                        self.sync_todo()
+                        self.sync_mail()
                     elif self.login:
                         if result == 'slow_down':
                             self.login['interval'] = self.login.get('interval', 5) + 5
@@ -213,8 +223,7 @@ class Controller(MailActions):
                     self.revision += 1
                 elif mono >= self.login['next_poll']:
                     code = self.login['device_code']
-                    mail_login = self.mail_login
-                    self.submit('login_poll', lambda: self.microsoft.poll_login(code, mail=True) if mail_login else self.microsoft.poll_login(code))
+                    self.submit('login_poll', lambda: self.microsoft.poll_login(code))
         if mono - self.last_save > 15 and (self.countdown.started is not None or self.stopwatch.started is not None):
             self.save_timers()
 
@@ -226,7 +235,9 @@ class Controller(MailActions):
 
     def key(self, delta):
         self.revision += 1
-        if self.modal:
+        if self.modal and self.modal[0] == '等待同步':
+            self.show_queue(delta)
+        elif self.modal:
             self.modal_page = max(0, self.modal_page + delta)
         elif self.page == 'todo':
             self.list_index = (self.list_index + delta) % len(self.views)
@@ -237,7 +248,7 @@ class Controller(MailActions):
         elif self.page == 'mail':
             self.mail_move(delta)
         elif self.page == 'settings':
-            self.settings_page = max(0, min(2, self.settings_page + delta))
+            self.settings_page = max(0, min(1, self.settings_page + delta))
         elif self.page == 'weather' and (self.show_hours if self.show_hours is not None else self.weather_view['rain']):
             self.weather_page = hour_page(self.weather_page + delta, len(self.weather_view['hours']))[0]
 
@@ -264,7 +275,10 @@ class Controller(MailActions):
             self.modal = None
             self.modal_page = 0
         elif name == 'modal_page':
-            self.modal_page = max(0, self.modal_page + args[0])
+            if self.modal and self.modal[0] == '等待同步':
+                self.show_queue(args[0])
+            else:
+                self.modal_page = max(0, self.modal_page + args[0])
         elif name == 'list':
             self.key(args[0])
         elif name == 'task_page':
@@ -362,7 +376,7 @@ class Controller(MailActions):
             self.save_preferences()
             self.next_due[key.replace('_minutes', '')] = 0
         elif name == 'settings_page':
-            self.settings_page = max(0, min(2, int(args[0])))
+            self.settings_page = max(0, min(1, int(args[0])))
         elif name == 'full_refresh':
             self.force_refresh = True
         elif name == 'rotate':
@@ -386,19 +400,22 @@ class Controller(MailActions):
             self.refresh_cache()
             self.notice = '配置已重新加载'
         elif name == 'login':
-            self.mail_login = False
-            if self.store.read('token.json', {}) or self.store.read('outbox.json', []):
-                self.notice = '请先注销旧账户，避免混用账户数据'
-            elif not self.login and 'login_begin' not in self.jobs and 'login_poll' not in self.jobs:
+            if self.jobs or self.login:
+                self.notice = '请等待当前网络任务结束'
+            else:
                 self.submit('login_begin', self.microsoft.begin_login)
         elif name == 'outbox':
-            text = '\n'.join('{}: {}'.format(i+1, q.get('error', '待同步')) for i, q in enumerate(self.outbox)) or '没有待提交操作'
-            buttons = [('清除冲突操作', ('clear_conflicts',))] if any(q['state'] == 'conflict' for q in self.outbox) else []
-            self.modal, self.modal_page = ('同步队列', text, buttons), 0
+            self.queue_index = 0
+            self.show_queue()
+        elif name == 'queue_cancel':
+            self.cancel_queue_item(args)
         elif name == 'clear_conflicts':
-            self.store.update('outbox.json', [], lambda queue: queue.__setitem__(slice(None), [q for q in queue if q['state'] != 'conflict']))
-            self.modal = None
+            self.store.update('outbox.json', [], lambda queue: queue.__setitem__(slice(None), [q for q in queue if q['state'] == 'pending']))
+            for item in self.mail_queue:
+                if item['state'] != 'pending':
+                    self.mail.cancel(item['id'])
             self.refresh_cache()
+            self.show_queue()
         elif name == 'logout':
             self.modal = ('注销微软账户', '将清除本机令牌、待办和邮箱缓存及全部未提交操作（包括已读队列）。请先联网提交需要保留的操作；不修改远端数据。', [('确认注销', ('logout_confirm',))])
         elif name == 'logout_confirm':

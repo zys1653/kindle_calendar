@@ -127,6 +127,6 @@ class DemoMail(Mail):
                     'hasAttachments': index%4 == 0, 'inferenceClassification': folder if folder in ('focused', 'other') else 'other'}
         super().__init__(Transport(), store)
         if not store.read('token.json', {}):
-            store.write('token.json', {'client_id': 'demo-mail', 'account_id': 'demo', 'scope': 'Mail.ReadWrite', 'account_label': 'demo@hotmail.com'})
+            store.write('token.json', {'client_id': 'demo-mail', 'account_id': 'demo', 'scope': 'Tasks.ReadWrite Mail.ReadWrite User.Read offline_access', 'account_label': 'demo@hotmail.com'})
         if not self.cached('focused').get('synced'):
             self.sync()

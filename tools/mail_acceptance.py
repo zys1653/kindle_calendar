@@ -1,4 +1,4 @@
-"""Explicit, opt-in 0.1.5 mailbox visual fixtures; never part of unit discovery."""
+"""Explicit, opt-in 0.1.6 mailbox visual fixtures; never part of unit discovery."""
 from pathlib import Path
 import sys
 from unittest.mock import patch
@@ -12,7 +12,7 @@ from app.network import HTTP
 
 
 def export():
-    output = ROOT/'preview'/'0.1.5-mail'
+    output = ROOT/'preview'/'0.1.6-mail'
     output.mkdir(parents=True, exist_ok=True)
     with scratch(ROOT/'.scratch') as state, patch.object(HTTP, 'request', side_effect=AssertionError('Real HTTP prohibited')):
         app = make_demo(ROOT/'todoclock', state)
@@ -40,7 +40,7 @@ def export():
                 app.notice = ''
                 render(app, path)[0].save(output/('empty-'+str(rotation)+'.png'))
                 app.mail_snapshot()
-                app.page, app.settings_page = 'settings', 2
+                app.page, app.settings_page = 'settings', 1
                 render(app, path)[0].save(output/('settings-'+str(rotation)+'.png'))
                 app.status['wifi_on'] = True
         finally:

@@ -54,12 +54,12 @@ class Mail:
 
     def ready(self):
         token = self.store.read('token.json', {})
-        return bool(self.identity() and 'Mail.ReadWrite' in token.get('scope', '').split())
+        return bool(self.identity() and {'Tasks.ReadWrite', 'Mail.ReadWrite', 'User.Read'}.issubset(set(token.get('scope', '').split())))
 
     def filename(self, part):
         identity = self.identity()
         if not identity:
-            raise ServiceError('请在设置第三页授权邮箱', 401)
+            raise ServiceError('请在设置第二页登录微软账户', 401)
         return 'mail-' + hashlib.sha256(identity.encode()).hexdigest()[:24] + '-' + part + '.json'
 
     def read(self, part, default):
@@ -112,7 +112,7 @@ class Mail:
 
     def require(self):
         if not self.ready():
-            raise ServiceError('请在设置第三页授权邮箱', 401)
+            raise ServiceError('请在设置第二页登录微软账户', 401)
 
     def fetch(self, folder, more=False):
         self.require()
@@ -148,8 +148,14 @@ class Mail:
             self.save_cache(folder, old)
             raise
 
+    def summary(self):
+        return self.read('sync', {'synced': 0, 'error': ''})
+
     def sync(self):
         self.require()
+        summary = self.summary()
+        summary['error'] = '邮箱同步未完成'
+        self.store.write(self.filename('sync'), summary)
         failure = None
         for folder, _ in FOLDERS:
             try:
@@ -158,8 +164,12 @@ class Mail:
                 failure = exc
                 if exc.status in (401, 403, 429):
                     break
+        summary = self.summary()
         if failure:
+            summary['error'] = '邮箱未完整同步，请重试'
+            self.store.write(self.filename('sync'), summary)
             raise failure
+        self.store.write(self.filename('sync'), {'synced': time.time(), 'error': ''})
 
     def body_file(self, message_id):
         return self.filename('body-' + hashlib.sha256(message_id.encode()).hexdigest())

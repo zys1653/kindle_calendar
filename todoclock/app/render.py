@@ -124,14 +124,16 @@ def render(app, path):
     c.text((wx+88, 38), temperature, temp_size)
     c.lines((wx+8, 119), current['text'], weather_width-16, 25, 1)
     c.draw.line((sx-18, 15, sx-18, 143), fill=175, width=1)
-    c.text((sx, 8), date, 26 if landscape else 23)
-    c.lines((sx, 42), battery, available, 22 if landscape else 19, 1)
-    c.lines((sx, 73), 'Wi-Fi ' + app.status.get('wifi', '未知'), available, 20, 1)
+    c.text((sx, 3), date, 34 if landscape else 32)
+    c.lines((sx, 45), battery, available, 22 if landscape else 19, 1)
+    c.lines((sx, 74), 'Wi-Fi ' + app.status.get('wifi', '未知'), available, 20, 1)
     ready = sync_ready(app)
-    c.lines((sx, 101), '待办 ' + timestamp(app.todo.get('synced', 0)), available-52, 18, 1)
-    c.lines((sx, 127), '天气 ' + timestamp(app.weather_synced), available-52, 18, 1)
+    sync_width = (available-12)/2
+    c.lines((sx, 102), '待办 ' + timestamp(app.todo.get('synced', 0)), sync_width, 18, 1)
+    c.lines((sx+sync_width+12, 102), '天气 ' + timestamp(app.weather_synced), sync_width, 18, 1)
+    c.lines((sx, 128), '邮箱 ' + (timestamp(app.mail_synced) if app.mail_synced else '尚未完整同步'), available-52, 18, 1)
     # Draw status marks directly so a missing font glyph cannot hide the result.
-    ix, iy = w-49, 124
+    ix, iy = w-49, 135
     c.draw.ellipse((ix-18, iy-18, ix+18, iy+18), outline=0, width=2)
     if ready:
         c.draw.line(((ix-10, iy), (ix-3, iy+7), (ix+10, iy-8)), fill=0, width=4)
@@ -268,41 +270,37 @@ def render(app, path):
             c.text((content_x+40, 890), '暂停时可调整；切换页面后继续计时。', 24)
     elif app.page == 'settings':
         c.text((content_x, 180), '设置', 38)
-        c.button((right-375, 180, right-310, 240), '‹', ('settings_page', max(0, app.settings_page-1)))
-        for index in range(3):
-            left = right-300+index*75
+        c.button((right-300, 180, right-235, 240), '‹', ('settings_page', max(0, app.settings_page-1)))
+        for index in range(2):
+            left = right-220+index*75
             c.button((left, 180, left+65, 240), str(index+1), ('settings_page', index), app.settings_page == index)
-        c.button((right-65, 180, right, 240), '›', ('settings_page', min(2, app.settings_page+1)))
+        c.button((right-65, 180, right, 240), '›', ('settings_page', min(1, app.settings_page+1)))
         def setting(row, label, buttons):
-            y = 280+row*100
-            c.text((content_x, y+10), label, 26)
+            # Nine common controls fit in landscape, with 60px touch targets.
+            step = min(100, (h-350)//9) if app.settings_page == 0 else 100
+            y = 270+row*step
+            c.text((content_x, y+12), label, 26)
             total = sum(b[2] for b in buttons) + (len(buttons)-1)*12
             x = right-total
             for text, action, bw in buttons:
-                c.button((x, y, x+bw, y+65), text, action, size=24)
+                c.button((x, y, x+bw, y+60), text, action, size=24)
                 x += bw+12
         if app.settings_page == 0:
             setting(0, 'Wi-Fi', [('开启' if app.status.get('wifi_on') else '关闭', ('wifi',), 150)])
             setting(1, '前光 '+number(app.status.get('light')), [('−', ('light', -1), 70), ('+', ('light', 1), 70)])
             setting(2, '天气地点', [(app.place['name'], ('location',), 230)])
-            for row, key, label in [(3, 'todo_minutes', '待办同步'), (4, 'weather_minutes', '天气更新'), (5, 'full_refresh_minutes', '彻底刷新')]:
+            for row, key, label in [(3, 'todo_minutes', '待办同步'), (4, 'weather_minutes', '天气更新'), (5, 'mail_minutes', '邮箱同步'), (6, 'full_refresh_minutes', '彻底刷新')]:
                 setting(row, label, [(str(app.config[key])+' 分钟' if app.config[key] else '仅手动', ('frequency', key), 190)])
-            setting(6, '屏幕方向', [('旋转 90°', ('rotate',), 190)])
-        elif app.settings_page == 1:
-            setting(0, '微软账户', [('登录', ('login',), 120), ('注销', ('logout',), 120)])
-            setting(1, '和风配置', [('重新加载', ('reload',), 160), ('测试连接', ('weather_sync',), 160)])
-            setting(2, '配置状态', [('演示配置' if app.demo else ('已填写' if app.secrets.get('qweather', {}).get('api_key') else '未填写 Key'), None, 230)])
-            setting(3, '诊断与日志', [('诊断', ('diagnostics',), 120), ('日志', ('logs',), 120)])
-            setting(4, '详细日志', [('开启 10 分钟', ('debug',), 230)])
-            setting(5, '同步队列', [('查看待提交操作', ('outbox',), 230)])
-            setting(6, '返回 Kindle', [('退出插件', ('exit',), 230)])
+            setting(7, '屏幕方向', [('旋转 90°', ('rotate',), 190)])
+            setting(8, '返回 Kindle', [('退出插件', ('exit',), 190)])
         else:
-            setting(0, '微软邮箱', [('补充授权 / 登录', ('mail_login',), 245)])
-            setting(1, '邮箱同步', [('仅手动' if not app.config['mail_minutes'] else str(app.config['mail_minutes'])+' 分钟', ('frequency', 'mail_minutes'), 190)])
-            setting(2, '授权状态', [('已授权' if app.mail_ready else '待授权', None, 190)])
-            setting(3, '立即同步', [('同步邮箱', ('mail_sync',), 190)])
-            setting(4, '已读操作', [('待提交 / 失败 '+str(len(app.mail_queue)), ('mail_queue',), 245)])
-            c.lines((content_x, 810), '邮箱与待办共用账户；注销请前往设置第 2 页。', width, 24, 2)
+            setting(0, '微软账户', [('登录 / 授权', ('login',), 175), ('注销', ('logout',), 120)])
+            setting(1, '账户状态', [('待办与邮箱已授权' if app.mail_ready else '未登录或需补充授权', None, 290)])
+            setting(2, '同步队列', [(app.queue_label, ('outbox',), 370)])
+            setting(3, '和风配置', [('重新加载', ('reload',), 160), ('测试连接', ('weather_sync',), 160)])
+            setting(4, '配置状态', [('演示配置' if app.demo else ('已填写' if app.secrets.get('qweather', {}).get('api_key') else '未填写 Key'), None, 230)])
+            setting(5, '诊断与日志', [('诊断', ('diagnostics',), 120), ('日志', ('logs',), 120)])
+            setting(6, '详细日志', [('开启 10 分钟', ('debug',), 230)])
     if app.modal:
         # Modal captures all touch actions, preventing click-through.
         c.hits.clear()
@@ -319,7 +317,8 @@ def render(app, path):
         for i, (label, action) in enumerate(buttons):
             c.button((215+i*340, h-265, 525+i*340, h-200), label, action, size=24)
         c.button((215, h-160, 315, h-95), '‹', ('modal_page', -1))
-        c.text((335, h-145), '{}/{}'.format(page+1, pages), 24)
+        queue_modal = title == '等待同步'
+        c.text((335, h-145), '{}/{}'.format(app.queue_index+1, max(1, len(app.queue_entries))) if queue_modal else '{}/{}'.format(page+1, pages), 24)
         c.button((435, h-160, 535, h-95), '›', ('modal_page', 1))
         c.button((w-240, h-160, w-60, h-95), '关闭', ('close',))
     return c.image, c.hits

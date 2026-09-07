@@ -6,8 +6,9 @@ from .network import HTTP, ServiceError
 
 AUTH = "https://login.microsoftonline.com/consumers/oauth2/v2.0/"
 GRAPH = "https://graph.microsoft.com/v1.0"
-SCOPES = "Tasks.ReadWrite offline_access"
-MAIL_SCOPES = SCOPES + " Mail.ReadWrite User.Read"
+SCOPES = "Tasks.ReadWrite Mail.ReadWrite User.Read offline_access"
+LEGACY_SCOPES = "Tasks.ReadWrite offline_access"
+MAIL_SCOPES = SCOPES  # Compatibility for older callers.
 
 
 class Microsoft:
@@ -18,6 +19,9 @@ class Microsoft:
         self.auth_cancelled = False
 
     def begin_mail_login(self):
+        return self.begin_login()
+
+    def begin_login(self):
         self.upgrade_identity = None
         old = self.store.read("token.json", {})
         if old:
@@ -37,23 +41,23 @@ class Microsoft:
                     except Exception:
                         identity = None
             if not identity:
-                raise ServiceError("无法验证旧账户，请先提交待办操作，再注销并重新授权邮箱")
+                raise ServiceError("无法验证旧账户，请先提交待办操作，再注销并重新登录微软账户")
             self.upgrade_identity = identity
-        return self.begin_login(mail=True)
+        return self._begin_device_login()
 
     def cancel_login(self):
         with self.auth_lock:
             self.auth_cancelled = True
 
-    def begin_login(self, mail=False):
+    def _begin_device_login(self):
         with self.auth_lock:
             self.auth_cancelled = False
         if not self.client_id or self.client_id.startswith("YOUR-"):
             raise ServiceError("请先在配置中填写微软 Client ID")
         return self.http.request("POST", AUTH + "devicecode", data={
-            "client_id": self.client_id, "scope": MAIL_SCOPES if mail else SCOPES})
+            "client_id": self.client_id, "scope": SCOPES})
 
-    def poll_login(self, code, mail=False):
+    def poll_login(self, code, mail=True):
         # OAuth polling errors are protocol states, not raw diagnostic output.
         try:
             response = self.http.session.post(AUTH + "token", data={
@@ -68,15 +72,14 @@ class Microsoft:
             return error
         if error or response.status_code != 200:
             raise ServiceError("登录已失效或被拒绝，请重试")
-        if mail:
-            if not {'Tasks.ReadWrite', 'Mail.ReadWrite', 'User.Read'}.issubset(set(data.get('scope', '').split())):
-                raise ServiceError('未授予完整邮箱权限，原登录已保留')
-            profile = self.http.request('GET', GRAPH + '/me?$select=id,mail,userPrincipalName',
-                                        headers={'Authorization': 'Bearer ' + data['access_token']})
-            identity = profile.get('id')
-            if not identity or (getattr(self, 'upgrade_identity', None) and identity != self.upgrade_identity):
-                raise ServiceError('授权账户与原待办账户不同，原登录已保留')
-            data.update(account_id=identity, account_label=profile.get('mail') or profile.get('userPrincipalName', '微软邮箱'))
+        if not {'Tasks.ReadWrite', 'Mail.ReadWrite', 'User.Read'}.issubset(set(data.get('scope', '').split())):
+            raise ServiceError('未授予完整待办与邮箱权限，原登录已保留')
+        profile = self.http.request('GET', GRAPH + '/me?$select=id,mail,userPrincipalName',
+                                    headers={'Authorization': 'Bearer ' + data['access_token']})
+        identity = profile.get('id')
+        if not identity or (getattr(self, 'upgrade_identity', None) and identity != self.upgrade_identity):
+            raise ServiceError('授权账户与原待办账户不同，原登录已保留')
+        data.update(account_id=identity, account_label=profile.get('mail') or profile.get('userPrincipalName', '微软邮箱'))
         with self.auth_lock:
             if self.auth_cancelled:
                 return "cancelled"
@@ -91,7 +94,7 @@ class Microsoft:
                  "refresh_token": data.get("refresh_token", previous.get("refresh_token", "")),
                  "expires_at": time.time() + float(data.get("expires_in", 3600)),
                  "client_id": self.client_id,
-                 "scope": data.get("scope", previous.get("scope", SCOPES)),
+                 "scope": data.get("scope", previous.get("scope", LEGACY_SCOPES)),
                  "account_id": data.get("account_id", previous.get("account_id", "")),
                  "account_label": data.get("account_label", previous.get("account_label", ""))}
         self.store.write("token.json", token)
@@ -107,7 +110,7 @@ class Microsoft:
         try:
             data = self.http.request("POST", AUTH + "token", data={
                 "client_id": self.client_id, "grant_type": "refresh_token",
-                "refresh_token": token["refresh_token"], "scope": token.get("scope", SCOPES)})
+                "refresh_token": token["refresh_token"], "scope": token.get("scope", LEGACY_SCOPES)})
         except ServiceError as exc:
             if exc.status in (400, 401):
                 raise ServiceError("微软登录已过期，请重新登录", 401) from None

@@ -263,7 +263,7 @@ class MailControllerTests(unittest.TestCase):
         for rotation in (0, 90, 180, 270):
             self.app.config['rotation'] = rotation
             for page in ('mail', 'settings'):
-                self.app.page, self.app.settings_page = page, 2
+                self.app.page, self.app.settings_page = page, 1
                 image, hits = render(self.app, self.font)
                 for (x1,y1,x2,y2), action in hits:
                     self.assertTrue(0 <= x1 < x2 <= image.width and 0 <= y1 < y2 <= image.height, action)

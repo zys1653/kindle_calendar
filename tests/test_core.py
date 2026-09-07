@@ -460,7 +460,7 @@ class ControllerRenderTests(WorkingDirectory):
         self.store.write('outbox.json', [{'list_id': 'deleted', 'task_id': 'missing', 'state': 'conflict', 'error': 'missing'}])
         self.app.refresh_cache()
         self.app.action(('outbox',))
-        self.assertEqual(self.app.modal[0], '同步队列')
+        self.assertEqual(self.app.modal[0], '等待同步')
         self.app.action(('clear_conflicts',))
         self.assertEqual(self.store.read('outbox.json'), [])
 

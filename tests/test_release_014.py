@@ -14,7 +14,8 @@ class HeaderLogicTests(unittest.TestCase):
     def ready_app(self):
         return SimpleNamespace(todo={'synced': 1000, 'lists': []}, weather_synced=1000,
                                weather_view={'errors': []}, jobs={}, errors={}, outbox=[],
-                               config={'todo_minutes': 30, 'weather_minutes': 30},
+                               mail_ready=True, mail_synced=1000, mail_summary={}, mail_queue=[],
+                               config={'todo_minutes': 30, 'weather_minutes': 30, 'mail_minutes': 15},
                                now=datetime.fromtimestamp(1100, timezone.utc))
 
     def test_both_services_must_be_successful_and_complete(self):
@@ -46,7 +47,7 @@ class HeaderLogicTests(unittest.TestCase):
         app = self.ready_app()
         app.now = datetime.fromtimestamp(3000, timezone.utc)
         self.assertFalse(sync_ready(app))
-        app.config.update(todo_minutes=0, weather_minutes=0)
+        app.config.update(todo_minutes=0, weather_minutes=0, mail_minutes=0)
         self.assertTrue(sync_ready(app))
 
     def test_body_has_one_charging_label_without_mutating_cover(self):
@@ -65,7 +66,7 @@ class HeaderLogicTests(unittest.TestCase):
         self.assertEqual(app.settings_page, 0)
         app.key(1)
         app.key(1)
-        self.assertEqual(app.settings_page, 2)
+        self.assertEqual(app.settings_page, 1)
         app._action('settings_page', [0])
         self.assertEqual(app.settings_page, 0)
         app._action('settings_page', [1])

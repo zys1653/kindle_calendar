@@ -75,3 +75,14 @@ Mail 接口：`ready / cached(folder) / fetch(folder, more=False) / sync / body(
 授权补充使用设备码流程，请求 Tasks.ReadWrite、Mail.ReadWrite、User.Read、offline_access。旧账户 ID 来自已有已核对记录、旧令牌访问 /me 的结果，或直接从微软获取的旧 JWT 的 oid 身份提示；身份不明时停止升级并说明重新登录步骤。JWT 身份提示不用于批准访问。新令牌以 /me 校验身份和 scope 后一次写入，取消与写入共用锁。注销等待活动任务结束，再清除对应缓存。
 
 文件夹和正文点击携带稳定 ID；分页完成通知同时携带文件夹与视图代次，过期结果不会跳转当前页面。正文异步结果只进入仍在查看的邮件。墨水屏显示线程、设备探测和恢复策略保持原边界。
+
+
+## 0.1.6 统一账户与同步摘要
+
+Microsoft.begin_login/poll_login 统一请求待办、邮件和账户读取权限；begin_mail_login 保留为旧调用别名。旧 scope 缺失的令牌按 Tasks.ReadWrite/offline_access 刷新，补充授权通过同一登录入口显式完成。登录成功后 Controller 提交一次待办与邮箱初始同步，随后各自遵守设置周期。
+
+Mail.summary 返回账户隔离的 {synced, error}，独立于各文件夹缓存。完整同步开始前标为未完成，六分类全部成功后原子写入时间并清空错误；失败或中断保留前次完整时间。旧缓存不会通过分页时间推断完整成功。
+
+Controller.mail_snapshot 向渲染器提供 mail_summary/mail_synced，queue_controller 合并两种队列的展示和计数，保持持久化文件独立。同步总状态包含 todo/weather/mail 与 flush/mail_flush，排除 mail_more/mail_body。设置和队列状态全部在主线程更新；渲染器仍不读取缓存。
+
+设置两页，周期与退出集中第一页，账户与合并队列在第二页。队列弹窗每页对应一项稳定 ID 操作，异步完成后刷新计数与当前项；清除失败不影响正常待提交项。取消最后一项时移除已无重试对象的队列提交错误。

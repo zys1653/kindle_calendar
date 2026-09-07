@@ -10,7 +10,6 @@ class MailActions:
         self.mail_detail, self.mail_body_page = None, 0
         self.mail_body_pages = 1
         self.mail_request = None
-        self.mail_login = False
         self.mail_generation = 0
 
     @property
@@ -20,9 +19,12 @@ class MailActions:
 
     def mail_snapshot(self):
         self.mail_ready = self.mail.ready()
+        self.mail_summary = self.mail.summary()
+        self.mail_synced = self.mail_summary['synced']
         self.mail_account = self.store.read('token.json', {}).get('account_label', '') if not self.demo else 'demo@hotmail.com'
         self.mail_cache = self.mail.cached(self.mail_folder)
         self.mail_queue = self.mail.queue()
+        self.queue_snapshot()
         self.mail_page = min(self.mail_page, max(0, (len(self.mail_cache['items'])-1)//self.mail_capacity))
         if self.mail_detail:
             body = self.mail.body(self.mail_detail['id'])
@@ -32,7 +34,7 @@ class MailActions:
 
     def sync_mail(self, manual=False):
         if not self.mail_ready:
-            self.notice = '请在设置第三页授权邮箱'
+            self.notice = '请在设置第二页登录微软账户'
             return
         if any(key in self.jobs for key in ('mail', 'mail_more')):
             return
@@ -122,22 +124,10 @@ class MailActions:
         elif name == 'mail_cancel':
             self.mail.cancel(args[0])
             self.mail_snapshot()
-        elif name == 'mail_login':
-            if self.jobs or self.login:
-                self.notice = '请等待当前网络任务结束'
-                return
-            self.mail_login = True
-            self.submit('login_begin', self.microsoft.begin_mail_login)
-        elif name == 'mail_clear_failed':
-            for item in self.mail_queue:
-                if item['state'] == 'failed':
-                    self.mail.cancel(item['id'])
-            self.mail_snapshot()
-            self.modal = None
+        elif name == 'mail_login':  # Older UI action compatibility.
+            self._action('login', [])
         elif name == 'mail_queue':
-            lines = ['第 {} 项：{}'.format(i+1, x.get('error', '已读待提交')) for i, x in enumerate(self.mail_queue)]
-            self.modal = ('邮箱待提交操作', '\n'.join(lines) or '没有待提交操作。', [('清除失败操作', ('mail_clear_failed',))] if any(x['state'] == 'failed' for x in self.mail_queue) else [])
-            self.modal_page = 0
+            self.show_queue()
 
     def mail_tick(self, online):
         if not online or not self.mail_ready:
